@@ -48,7 +48,7 @@ func TestNextToken(t *testing.T) {
 		{token.RBRACE, "}"},
 		{token.LET, "let"},
 		{token.IDENT, "result"},
-		{token.ASSIGN, "assign"},
+		{token.ASSIGN, "="},
 		{token.IDENT, "add"},
 		{token.LPAREN, "("},
 		{token.IDENT, "five"},
