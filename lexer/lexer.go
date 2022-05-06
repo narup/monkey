@@ -41,7 +41,14 @@ func (l *Lexer) NextToken() token.Token {
 	literal := string(l.ch)
 	switch literal {
 	case token.ASSIGN:
-		tok = newToken(token.ASSIGN, literal)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal = string(ch) + string(l.ch)
+			tok = token.Token{Type: token.EQ, Literal: literal}
+		} else {
+			tok = newToken(token.ASSIGN, literal)
+		}
 	case token.SEMICOLON:
 		tok = newToken(token.SEMICOLON, literal)
 	case token.LPAREN:
@@ -55,7 +62,14 @@ func (l *Lexer) NextToken() token.Token {
 	case token.MINUS:
 		tok = newToken(token.MINUS, literal)
 	case token.BANG:
-		tok = newToken(token.BANG, literal)
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			literal = string(ch) + string(l.ch)
+			tok = token.Token{Type: token.NOT_EQ, Literal: literal}
+		} else {
+			tok = newToken(token.BANG, literal)
+		}
 	case token.SLASH:
 		tok = newToken(token.SLASH, literal)
 	case token.ASTERISK:
@@ -121,6 +135,16 @@ func (l *Lexer) readNumber() string {
 func (l *Lexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
 		l.readChar()
+	}
+}
+
+//similar to readChar except that it doesn't increment
+//l.position and l.readPosition and only peek ahead
+func (l *Lexer) peekChar() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	} else {
+		return l.input[l.readPosition]
 	}
 }
 
