@@ -1,3 +1,6 @@
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+
 //Lexer tokenizes the code input
 pub struct Lexer {
     input: String,
@@ -34,8 +37,34 @@ impl Lexer {
             ')' => Token::new(TokenType::RParen, self.token_value()),
             '{' => Token::new(TokenType::LBrace, self.token_value()),
             '}' => Token::new(TokenType::RBrace, self.token_value()),
-            _ => Token::new(TokenType::Illegal, "illegal".to_string()),
+            _ => {
+                if self.is_identifier() {
+                    let identifier = self.read_identifier();
+                    let token_type_option = KEYWORDS.get(identifier.as_str());
+                    match token_type_option {
+                        Some(token_type) => Token::new(*token_type, identifier),
+                        None => Token::new(TokenType::Identifier, identifier),
+                    }
+                } else {
+                    Token::new(TokenType::Illegal, "illegal".to_string())
+                }
+            }
         }
+    }
+
+    fn read_identifier(&mut self) -> String {
+        let start_index = self.current_index;
+
+        self.read_char();
+        while self.is_identifier() {
+            self.read_char();
+        }
+
+        return self.input[start_index..self.current_index].to_string();
+    }
+
+    fn is_identifier(&mut self) -> bool {
+        return self.current_char.is_ascii_alphanumeric() || self.current_char == '_';
     }
 
     fn token_value(&mut self) -> String {
@@ -79,11 +108,20 @@ impl Token {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+lazy_static! {
+    static ref KEYWORDS: HashMap<&'static str, TokenType> = {
+        let mut map = HashMap::new();
+        map.insert("let", TokenType::Let);
+        map.insert("fn", TokenType::Function);
+        map
+    };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     Illegal,
     EndOfFile,
-    Ident,
+    Identifier,
     Int,
     Assign,
     Plus,
@@ -144,39 +182,39 @@ mod tests {
             input2.to_string(),
             vec![
                 test_token(TokenType::Let, "let"),
-                test_token(TokenType::Ident, "five"),
+                test_token(TokenType::Identifier, "five"),
                 test_token(TokenType::Assign, "="),
                 test_token(TokenType::Int, "5"),
                 test_token(TokenType::Semicolon, ";"),
                 test_token(TokenType::Let, "let"),
-                test_token(TokenType::Ident, "ten"),
+                test_token(TokenType::Identifier, "ten"),
                 test_token(TokenType::Assign, "="),
                 test_token(TokenType::Int, "10"),
                 test_token(TokenType::Semicolon, ";"),
                 test_token(TokenType::Let, "let"),
-                test_token(TokenType::Ident, "add"),
+                test_token(TokenType::Identifier, "add"),
                 test_token(TokenType::Assign, "="),
                 test_token(TokenType::Function, "fn"),
                 test_token(TokenType::LParen, "("),
-                test_token(TokenType::Ident, "x"),
+                test_token(TokenType::Identifier, "x"),
                 test_token(TokenType::Comma, ","),
-                test_token(TokenType::Ident, "y"),
+                test_token(TokenType::Identifier, "y"),
                 test_token(TokenType::RParen, ")"),
                 test_token(TokenType::LBrace, "{"),
-                test_token(TokenType::Ident, "x"),
+                test_token(TokenType::Identifier, "x"),
                 test_token(TokenType::Plus, "+"),
-                test_token(TokenType::Ident, "y"),
+                test_token(TokenType::Identifier, "y"),
                 test_token(TokenType::Semicolon, ";"),
                 test_token(TokenType::RBrace, "}"),
                 test_token(TokenType::Semicolon, ";"),
                 test_token(TokenType::Let, "let"),
-                test_token(TokenType::Ident, "result"),
+                test_token(TokenType::Identifier, "result"),
                 test_token(TokenType::Assign, "="),
-                test_token(TokenType::Ident, "add"),
+                test_token(TokenType::Identifier, "add"),
                 test_token(TokenType::LParen, "("),
-                test_token(TokenType::Ident, "five"),
+                test_token(TokenType::Identifier, "five"),
                 test_token(TokenType::Plus, "+"),
-                test_token(TokenType::Ident, "ten"),
+                test_token(TokenType::Identifier, "ten"),
                 test_token(TokenType::RParen, ")"),
                 test_token(TokenType::Semicolon, ";"),
             ],
