@@ -14,9 +14,9 @@ impl Lexer {
     pub fn new(input: String) -> Lexer {
         Self {
             input,
+            current_char: char::REPLACEMENT_CHARACTER,
             current_index: 0,
             next_index: 0,
-            current_char: char::REPLACEMENT_CHARACTER,
         }
     }
 
@@ -27,7 +27,7 @@ impl Lexer {
     //returns the next token from the input
     pub fn next_token(&mut self) -> Token {
         self.read_char();
-
+        self.skip_whitespace();
         match self.current_char {
             '+' => Token::new(TokenType::Plus, self.token_value()),
             '=' => Token::new(TokenType::Assign, self.token_value()),
@@ -64,7 +64,7 @@ impl Lexer {
     }
 
     fn is_identifier(&mut self) -> bool {
-        return self.current_char.is_ascii_alphanumeric() || self.current_char == '_';
+        return self.current_char.is_alphanumeric() || self.current_char == '_';
     }
 
     fn token_value(&mut self) -> String {
@@ -74,6 +74,7 @@ impl Lexer {
     fn read_char(&mut self) {
         if self.is_eof() {
             self.current_char = char::REPLACEMENT_CHARACTER;
+            return;
         }
 
         let ch: Option<char> = self.input.chars().nth(self.next_index);
@@ -91,6 +92,15 @@ impl Lexer {
 
     fn is_eof(&mut self) -> bool {
         return self.next_index >= self.input.len();
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.current_char.is_whitespace()
+            || self.current_char == '\n'
+            || self.current_char == '\t'
+        {
+            self.read_char();
+        }
     }
 }
 
@@ -157,6 +167,7 @@ mod tests {
     #[test]
     fn lexer_tests() {
         let input = String::from("+{}();,");
+        println!("First test input {}", input);
         lexer_test(
             input,
             vec![
@@ -169,6 +180,8 @@ mod tests {
                 test_token(TokenType::Comma, ","),
             ],
         );
+
+        println!("Second test");
 
         let input2 = r#"
         let five = 5;
