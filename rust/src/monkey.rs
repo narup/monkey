@@ -29,6 +29,7 @@ impl Lexer {
         self.read_char();
         self.skip_whitespace();
         match self.current_char {
+            char::REPLACEMENT_CHARACTER => Token::new(TokenType::EndOfFile, "eof".to_string()),
             '+' => Token::new(TokenType::Plus, self.token_value()),
             '=' => Token::new(TokenType::Assign, self.token_value()),
             ';' => Token::new(TokenType::Semicolon, self.token_value()),
@@ -38,13 +39,17 @@ impl Lexer {
             '{' => Token::new(TokenType::LBrace, self.token_value()),
             '}' => Token::new(TokenType::RBrace, self.token_value()),
             _ => {
-                if self.is_identifier() {
+                if is_letter(self.current_char) {
                     let identifier = self.read_identifier();
+
                     let token_type_option = KEYWORDS.get(identifier.as_str());
                     match token_type_option {
                         Some(token_type) => Token::new(*token_type, identifier),
                         None => Token::new(TokenType::Identifier, identifier),
                     }
+                } else if is_digit(self.current_char) {
+                    let number = self.read_number();
+                    Token::new(TokenType::Int, number)
                 } else {
                     Token::new(TokenType::Illegal, "illegal".to_string())
                 }
@@ -52,31 +57,43 @@ impl Lexer {
         }
     }
 
+    fn read_number(&mut self) -> String {
+        let start_index = self.current_index;
+
+        let mut next_ch = self.peek_char();
+        while is_digit(next_ch) {
+            self.read_char();
+            next_ch = self.peek_char();
+        }
+
+        return self.input[start_index..self.next_index].to_string();
+    }
+
     fn read_identifier(&mut self) -> String {
         let start_index = self.current_index;
 
-        self.read_char();
-        while self.is_identifier() {
+        let mut next_ch = self.peek_char();
+        while is_letter(next_ch) {
             self.read_char();
+            next_ch = self.peek_char();
         }
 
-        return self.input[start_index..self.current_index].to_string();
-    }
-
-    fn is_identifier(&mut self) -> bool {
-        return self.current_char.is_alphanumeric() || self.current_char == '_';
+        return self.input[start_index..self.next_index].to_string();
     }
 
     fn token_value(&mut self) -> String {
         self.current_char.to_string()
     }
 
-    fn read_char(&mut self) {
-        if self.is_eof() {
-            self.current_char = char::REPLACEMENT_CHARACTER;
-            return;
+    fn peek_char(&mut self) -> char {
+        let ch: Option<char> = self.input.chars().nth(self.next_index);
+        match ch {
+            Some(c) => c,
+            None => char::REPLACEMENT_CHARACTER,
         }
+    }
 
+    fn read_char(&mut self) {
         let ch: Option<char> = self.input.chars().nth(self.next_index);
         match ch {
             Some(c) => {
@@ -90,10 +107,6 @@ impl Lexer {
         self.next_index = self.next_index + 1;
     }
 
-    fn is_eof(&mut self) -> bool {
-        return self.next_index >= self.input.len();
-    }
-
     fn skip_whitespace(&mut self) {
         while self.current_char.is_whitespace()
             || self.current_char == '\n'
@@ -102,6 +115,14 @@ impl Lexer {
             self.read_char();
         }
     }
+}
+
+fn is_letter(ch: char) -> bool {
+    return ch.is_ascii_alphabetic() || ch == '_';
+}
+
+fn is_digit(ch: char) -> bool {
+    return ch.is_ascii_digit();
 }
 
 pub struct Token {
@@ -181,7 +202,8 @@ mod tests {
             ],
         );
 
-        println!("Second test");
+        println!("First test finished");
+        println!("Second test begins...");
 
         let input2 = r#"
         let five = 5;
@@ -241,12 +263,21 @@ mod tests {
         }
     }
 
-    fn lexer_test(input: String, expected_token: Vec<TestToken>) {
+    fn lexer_test(input: String, expected_tokens: Vec<TestToken>) {
         let mut lexer: Lexer = Lexer::new(input.clone());
-        for expected_token in expected_token.iter() {
+        for expected_token in expected_tokens.iter() {
             let actual_token = lexer.next_token();
             assert_eq!(expected_token.token_type, actual_token.token_type);
             assert_eq!(expected_token.token_val, actual_token.literal);
+            println!(
+                "Actual token: {:?}, Value: {}",
+                actual_token.token_type, actual_token.literal
+            );
         }
+
+        println!("===================== CHECK EOF ===================");
+        let eof_token = lexer.next_token();
+        assert_eq!(eof_token.token_type, TokenType::EndOfFile);
+        println!("================ LEXER TEST FINISHED ==============")
     }
 }
