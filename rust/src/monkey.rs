@@ -20,10 +20,6 @@ impl Lexer {
         }
     }
 
-    pub fn remaining_input(self) -> String {
-        return self.input;
-    }
-
     //returns the next token from the input
     pub fn next_token(&mut self) -> Token {
         self.read_char();
@@ -31,13 +27,31 @@ impl Lexer {
         match self.current_char {
             char::REPLACEMENT_CHARACTER => Token::new(TokenType::EndOfFile, "eof".to_string()),
             '+' => Token::new(TokenType::Plus, self.token_value()),
-            '=' => Token::new(TokenType::Assign, self.token_value()),
+            '-' => Token::new(TokenType::Minus, self.token_value()),
+            '=' => {
+                if self.peek_char() == '=' {
+                    Token::new(TokenType::Equal, self.two_chars_token_value())
+                } else {
+                    Token::new(TokenType::Assign, self.token_value())
+                }
+            }
             ';' => Token::new(TokenType::Semicolon, self.token_value()),
             ',' => Token::new(TokenType::Comma, self.token_value()),
             '(' => Token::new(TokenType::LParen, self.token_value()),
             ')' => Token::new(TokenType::RParen, self.token_value()),
             '{' => Token::new(TokenType::LBrace, self.token_value()),
             '}' => Token::new(TokenType::RBrace, self.token_value()),
+            '!' => {
+                if self.peek_char() == '=' {
+                    Token::new(TokenType::NotEqual, self.two_chars_token_value())
+                } else {
+                    Token::new(TokenType::Bang, self.token_value())
+                }
+            }
+            '*' => Token::new(TokenType::Asterisk, self.token_value()),
+            '/' => Token::new(TokenType::Slash, self.token_value()),
+            '>' => Token::new(TokenType::GreaterThan, self.token_value()),
+            '<' => Token::new(TokenType::LessThan, self.token_value()),
             _ => {
                 if is_letter(self.current_char) {
                     let identifier = self.read_identifier();
@@ -83,6 +97,13 @@ impl Lexer {
 
     fn token_value(&mut self) -> String {
         self.current_char.to_string()
+    }
+
+    fn two_chars_token_value(&mut self) -> String {
+        let ch = self.current_char;
+        self.read_char();
+
+        format!("{}{}", ch, self.current_char)
     }
 
     fn peek_char(&mut self) -> char {
@@ -144,6 +165,12 @@ lazy_static! {
         let mut map = HashMap::new();
         map.insert("let", TokenType::Let);
         map.insert("fn", TokenType::Function);
+        map.insert("true", TokenType::True);
+        map.insert("false", TokenType::False);
+        map.insert("return", TokenType::Return);
+        map.insert("if", TokenType::If);
+        map.insert("else", TokenType::Else);
+
         map
     };
 }
@@ -156,14 +183,27 @@ pub enum TokenType {
     Int,
     Assign,
     Plus,
+    Minus,
     Comma,
     Semicolon,
     LParen,
     RParen,
     LBrace,
     RBrace,
+    Bang,
+    Asterisk,
+    Slash,
+    GreaterThan,
+    LessThan,
     Function,
     Let,
+    If,
+    Else,
+    Return,
+    True,
+    False,
+    Equal,
+    NotEqual,
 }
 
 #[cfg(test)]
@@ -212,6 +252,15 @@ mod tests {
             x + y;
         };
         let result = add(five + ten);
+        !-/*5;
+        5 < 10 > 5;
+        if (5 < 10) {
+           return true;
+        } else {
+           return false;
+        }
+        10 == 10;
+        10 != 9;
         "#;
         lexer_test(
             input2.to_string(),
@@ -251,6 +300,43 @@ mod tests {
                 test_token(TokenType::Plus, "+"),
                 test_token(TokenType::Identifier, "ten"),
                 test_token(TokenType::RParen, ")"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::Bang, "!"),
+                test_token(TokenType::Minus, "-"),
+                test_token(TokenType::Slash, "/"),
+                test_token(TokenType::Asterisk, "*"),
+                test_token(TokenType::Int, "5"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::Int, "5"),
+                test_token(TokenType::LessThan, "<"),
+                test_token(TokenType::Int, "10"),
+                test_token(TokenType::GreaterThan, ">"),
+                test_token(TokenType::Int, "5"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::If, "if"),
+                test_token(TokenType::LParen, "("),
+                test_token(TokenType::Int, "5"),
+                test_token(TokenType::LessThan, "<"),
+                test_token(TokenType::Int, "10"),
+                test_token(TokenType::RParen, ")"),
+                test_token(TokenType::LBrace, "{"),
+                test_token(TokenType::Return, "return"),
+                test_token(TokenType::True, "true"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::RBrace, "}"),
+                test_token(TokenType::Else, "else"),
+                test_token(TokenType::LBrace, "{"),
+                test_token(TokenType::Return, "return"),
+                test_token(TokenType::False, "false"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::RBrace, "}"),
+                test_token(TokenType::Int, "10"),
+                test_token(TokenType::Equal, "=="),
+                test_token(TokenType::Int, "10"),
+                test_token(TokenType::Semicolon, ";"),
+                test_token(TokenType::Int, "10"),
+                test_token(TokenType::NotEqual, "!="),
+                test_token(TokenType::Int, "9"),
                 test_token(TokenType::Semicolon, ";"),
             ],
         )
