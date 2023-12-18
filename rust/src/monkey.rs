@@ -1,6 +1,131 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
+pub trait Node {
+    //prints the node name
+    fn name(&self) -> String;
+    fn to_string(&self) -> String;
+}
+
+pub trait Statement: Node {
+    fn statement_type(&self) -> String;
+}
+
+pub trait Expression: Node {
+    fn expression_type(&self) -> String;
+}
+
+struct Identifier {}
+
+//In Monkey identifier can be an expression
+impl Expression for Identifier {
+    fn expression_type(&self) -> String {
+        "expression".to_string()
+    }
+}
+
+impl Node for Identifier {
+    fn name(&self) -> String {
+        "ident".to_string()
+    }
+
+    fn to_string(&self) -> String {
+        todo!()
+    }
+}
+
+struct LetStatement {
+    let_token: Token,
+    identifier: Identifier,
+    value: Box<dyn Expression>,
+}
+
+impl Statement for LetStatement {
+    fn statement_type(&self) -> String {
+        "statement_type".to_string()
+    }
+}
+
+impl Node for LetStatement {
+    fn name(&self) -> String {
+        self.let_token.literal.clone()
+    }
+
+    fn to_string(&self) -> String {
+        format!("let {} = {}", self.identifier.name(), self.value.name())
+    }
+}
+
+struct MonkeyExpression {}
+
+impl Node for MonkeyExpression {
+    fn name(&self) -> String {
+        "expression".to_string()
+    }
+
+    fn to_string(&self) -> String {
+        todo!()
+    }
+}
+
+impl Expression for MonkeyExpression {
+    fn expression_type(&self) -> String {
+        "monkey_expression".to_string()
+    }
+}
+
+pub struct Program {
+    pub statements: Vec<Box<dyn Statement>>,
+}
+
+pub struct Parser {
+    lexer: Lexer,
+    current_token: Token,
+    peek_token: Token,
+}
+
+impl Parser {
+    pub fn new(l: Lexer) -> Parser {
+        Self {
+            lexer: l,
+            current_token: Token {
+                token_type: TokenType::Illegal,
+                literal: "Illegal".to_string(),
+            },
+            peek_token: Token {
+                token_type: TokenType::Illegal,
+                literal: "Illegal".to_string(),
+            },
+        }
+    }
+
+    /// Returns the parse of this [`Parser`].
+    pub fn parse(&mut self) -> Program {
+        let program = Program {
+            statements: Vec::new(),
+        };
+        self.advance_tokens();
+
+        while self.is_valid_token() {
+            if self.current_token.token_type == TokenType::Let {
+                //handle let statement
+            }
+            self.advance_tokens();
+        }
+
+        return program;
+    }
+
+    fn advance_tokens(&mut self) {
+        self.current_token = self.lexer.next_token();
+        self.peek_token = self.lexer.next_token();
+    }
+
+    fn is_valid_token(&mut self) -> bool {
+        return self.current_token.token_type != TokenType::EndOfFile;
+    }
+}
+
 //Lexer tokenizes the code input
 pub struct Lexer {
     input: String,
@@ -223,6 +348,24 @@ mod tests {
     #[test]
     fn test_works() {
         assert_eq!("monkey", mod_name());
+    }
+
+    #[test]
+    fn parser_let_statement_test() {
+        let input = r#"
+        let x = 5;
+        let y = 10;
+        let foobar = 838383;
+        "#;
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse();
+        for stmt in program.statements.iter() {
+            println!("statement name:{}", stmt.name());
+            println!("statement value:{}", stmt.to_string());
+        }
     }
 
     #[test]

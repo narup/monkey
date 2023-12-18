@@ -39,5 +39,12 @@ fn main() {
                 token.token_type, token.literal
             );
         }
+
+        let mut parser = monkey::Parser::new(lexer);
+        let program: monkey::Program = parser.parse();
+
+        for stmt in program.statements.iter() {
+            println!("Statement literal:{}", stmt.to_string());
+        }
     }
 }
