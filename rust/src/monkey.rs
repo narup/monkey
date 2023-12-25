@@ -1,21 +1,30 @@
+use derive_more::Display;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 pub trait Node {
     //prints the node name
     fn name(&self) -> String;
-    fn to_string(&self) -> String;
+    fn to_value(&self) -> String;
 }
 
-pub trait Statement: Node {
-    fn statement_type(&self) -> String;
+#[derive(Display)]
+#[display(fmt = "Hello there!")]
+pub enum Statement {
+    Let {
+        token: Token,
+        identifier: Box<dyn Expression>,
+        value: Box<dyn Expression>,
+    },
 }
 
 pub trait Expression: Node {
     fn expression_type(&self) -> String;
 }
 
-struct Identifier {}
+struct Identifier {
+    value: String,
+}
 
 //In Monkey identifier can be an expression
 impl Expression for Identifier {
@@ -29,42 +38,51 @@ impl Node for Identifier {
         "ident".to_string()
     }
 
-    fn to_string(&self) -> String {
-        todo!()
+    fn to_value(&self) -> String {
+        self.value.clone()
     }
 }
 
-struct LetStatement {
-    let_token: Token,
-    identifier: Identifier,
-    value: Box<dyn Expression>,
-}
-
-impl Statement for LetStatement {
-    fn statement_type(&self) -> String {
-        "statement_type".to_string()
-    }
-}
-
-impl Node for LetStatement {
+impl Node for Statement {
     fn name(&self) -> String {
-        self.let_token.literal.clone()
+        match self {
+            Statement::Let {
+                token: _,
+                identifier: _,
+                value: _,
+            } => "let".to_string(),
+        }
     }
 
-    fn to_string(&self) -> String {
-        format!("let {} = {}", self.identifier.name(), self.value.name())
+    fn to_value(&self) -> String {
+        match self {
+            Statement::Let {
+                token,
+                identifier,
+                value,
+            } => {
+                format!(
+                    "{} {} = {}",
+                    token.literal,
+                    identifier.to_value(),
+                    value.to_value()
+                )
+            }
+        }
     }
 }
 
-struct MonkeyExpression {}
+struct MonkeyExpression {
+    value: String,
+}
 
 impl Node for MonkeyExpression {
     fn name(&self) -> String {
         "expression".to_string()
     }
 
-    fn to_string(&self) -> String {
-        todo!()
+    fn to_value(&self) -> String {
+        self.value.clone()
     }
 }
 
@@ -75,7 +93,12 @@ impl Expression for MonkeyExpression {
 }
 
 pub struct Program {
-    pub statements: Vec<Box<dyn Statement>>,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Display)]
+pub enum ParserError {
+    SyntaxError(String),
 }
 
 pub struct Parser {
@@ -86,7 +109,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(l: Lexer) -> Parser {
-        Self {
+        let mut p = Self {
             lexer: l,
             current_token: Token {
                 token_type: TokenType::Illegal,
@@ -96,28 +119,87 @@ impl Parser {
                 token_type: TokenType::Illegal,
                 literal: "Illegal".to_string(),
             },
-        }
+        };
+
+        p.current_token = p.lexer.next_token();
+        p.peek_token = p.lexer.next_token();
+
+        return p;
     }
 
     /// Returns the parse of this [`Parser`].
-    pub fn parse(&mut self) -> Program {
-        let program = Program {
+    pub fn parse(&mut self) -> Result<Program, ParserError> {
+        let mut program = Program {
             statements: Vec::new(),
         };
-        self.advance_tokens();
 
         while self.is_valid_token() {
             if self.current_token.token_type == TokenType::Let {
-                //handle let statement
+                let let_stmt = self.parse_let_statement()?; //handle let statement
+                program.statements.push(let_stmt);
             }
             self.advance_tokens();
         }
 
-        return program;
+        return Ok(program);
+    }
+
+    fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
+        let let_token = Token::new(TokenType::Let, self.current_token.literal.clone());
+
+        if !self.matches_peek_token(TokenType::Identifier) {
+            return Err(ParserError::SyntaxError(
+                "invalid let statement, missing identifier after let".to_owned(),
+            ));
+        }
+        self.advance_tokens();
+
+        let identifier = self.parse_identifier()?;
+        if !self.matches_peek_token(TokenType::Assign) {
+            return Err(ParserError::SyntaxError(
+                "invalid let statement, missing assign ('=') after identifier".to_string(),
+            ));
+        }
+        //read assign token
+        self.advance_tokens();
+        //skip assign token
+        self.advance_tokens();
+
+        let value = self.parse_expression()?;
+        if !self.matches_peek_token(TokenType::Semicolon) {
+            return Err(ParserError::SyntaxError("missing semicolon".to_string()));
+        }
+
+        //skip semicolon
+        self.advance_tokens();
+
+        Ok(Statement::Let {
+            token: let_token,
+            identifier,
+            value,
+        })
+    }
+
+    fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
+        return Ok(Box::new(Identifier {
+            value: self.current_token.literal.clone(),
+        }));
+    }
+
+    fn parse_expression(&mut self) -> Result<Box<dyn Expression>, ParserError> {
+        Ok(Box::new(MonkeyExpression {
+            value: self.current_token.literal.clone(),
+        }))
+    }
+
+    fn matches_peek_token(&self, token_type: TokenType) -> bool {
+        return self.peek_token.token_type == token_type;
     }
 
     fn advance_tokens(&mut self) {
-        self.current_token = self.lexer.next_token();
+        //copy value in peek_token as current token
+        self.current_token =
+            Token::new(self.peek_token.token_type, self.peek_token.literal.clone());
         self.peek_token = self.lexer.next_token();
     }
 
@@ -338,6 +420,8 @@ fn mod_name() -> String {
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+
     use super::*;
 
     struct TestToken {
@@ -361,10 +445,26 @@ mod tests {
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
 
-        let program = parser.parse();
-        for stmt in program.statements.iter() {
-            println!("statement name:{}", stmt.name());
-            println!("statement value:{}", stmt.to_string());
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Let {
+                            token,
+                            identifier,
+                            value,
+                        } => {
+                            println!(
+                                "Let statement parsed = {:?}, {:?}, {:?}!",
+                                token.literal,
+                                identifier.to_value(),
+                                value.to_value()
+                            );
+                        }
+                    }
+                }
+            }
+            Err(err) => panic!("parsing let statement failed {:?}", err),
         }
     }
 

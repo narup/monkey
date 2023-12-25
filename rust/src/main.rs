@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::monkey::TokenType;
+use crate::monkey::{Statement, TokenType};
 
 mod monkey;
 
@@ -41,10 +41,26 @@ fn main() {
         }
 
         let mut parser = monkey::Parser::new(lexer);
-        let program: monkey::Program = parser.parse();
-
-        for stmt in program.statements.iter() {
-            println!("Statement literal:{}", stmt.to_string());
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Let {
+                            token,
+                            identifier,
+                            value,
+                        } => {
+                            println!(
+                                "{} {} = {}",
+                                token.literal,
+                                identifier.to_value(),
+                                value.to_value()
+                            )
+                        }
+                    }
+                }
+            }
+            Err(err) => println!("Parser error:{}", err),
         }
     }
 }
