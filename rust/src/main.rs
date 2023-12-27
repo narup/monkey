@@ -57,6 +57,10 @@ fn main() {
                                 value.to_value()
                             )
                         }
+
+                        Statement::Return { token, value } => {
+                            println!("{} {}", token.literal, value.to_value())
+                        }
                     }
                 }
             }

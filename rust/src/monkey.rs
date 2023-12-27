@@ -16,6 +16,10 @@ pub enum Statement {
         identifier: Box<dyn Expression>,
         value: Box<dyn Expression>,
     },
+    Return {
+        token: Token,
+        value: Box<dyn Expression>,
+    },
 }
 
 pub trait Expression: Node {
@@ -51,6 +55,7 @@ impl Node for Statement {
                 identifier: _,
                 value: _,
             } => "let".to_string(),
+            Statement::Return { token: _, value: _ } => "return".to_string(),
         }
     }
 
@@ -67,6 +72,10 @@ impl Node for Statement {
                     identifier.to_value(),
                     value.to_value()
                 )
+            }
+
+            Statement::Return { token, value } => {
+                format!("{} {}", token.literal, value.to_value())
             }
         }
     }
@@ -134,9 +143,12 @@ impl Parser {
         };
 
         while self.is_valid_token() {
-            if self.current_token.token_type == TokenType::Let {
+            if self.matches_current_token(TokenType::Let) {
                 let let_stmt = self.parse_let_statement()?; //handle let statement
                 program.statements.push(let_stmt);
+            } else if self.matches_current_token(TokenType::Return) {
+                let ret_stmt = self.parse_return_statement()?;
+                program.statements.push(ret_stmt);
             }
             self.advance_tokens();
         }
@@ -180,6 +192,26 @@ impl Parser {
         })
     }
 
+    fn parse_return_statement(&mut self) -> Result<Statement, ParserError> {
+        let ret_token = Token::new(TokenType::Return, self.current_token.literal.clone());
+        self.advance_tokens();
+
+        let value = self.parse_expression()?;
+        if !self.matches_peek_token(TokenType::Semicolon) {
+            return Err(ParserError::SyntaxError(
+                "missing semicolon on return statement".to_string(),
+            ));
+        }
+
+        //skip Semicolon
+        self.advance_tokens();
+
+        Ok(Statement::Return {
+            token: ret_token,
+            value,
+        })
+    }
+
     fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
         return Ok(Box::new(Identifier {
             value: self.current_token.literal.clone(),
@@ -194,6 +226,10 @@ impl Parser {
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
         return self.peek_token.token_type == token_type;
+    }
+
+    fn matches_current_token(&self, token_type: TokenType) -> bool {
+        return self.current_token.token_type == token_type;
     }
 
     fn advance_tokens(&mut self) {
@@ -440,6 +476,8 @@ mod tests {
         let x = 5;
         let y = 10;
         let foobar = 838383;
+        return 30;
+        return y;
         "#;
 
         let lexer = Lexer::new(input.to_string());
@@ -458,6 +496,14 @@ mod tests {
                                 "Let statement parsed = {:?}, {:?}, {:?}!",
                                 token.literal,
                                 identifier.to_value(),
+                                value.to_value()
+                            );
+                        }
+
+                        Statement::Return { token, value } => {
+                            println!(
+                                "Return statement parsed = {:?}, {:?}",
+                                token.literal,
                                 value.to_value()
                             );
                         }
