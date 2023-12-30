@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::monkey::{Statement, TokenType};
+use crate::monkey::Node;
 
 mod monkey;
 
@@ -26,42 +26,13 @@ fn main() {
             break;
         }
 
-        let mut lexer: monkey::Lexer = monkey::Lexer::new(input.clone());
-        loop {
-            let token: monkey::Token = lexer.next_token();
-            if token.token_type == TokenType::EndOfFile {
-                println!("EndOfFile");
-                break;
-            }
-
-            println!(
-                "Token(type: {:?}, value: {})",
-                token.token_type, token.literal
-            );
-        }
-
+        let lexer = monkey::Lexer::new(input.clone());
         let mut parser = monkey::Parser::new(lexer);
+
         match parser.parse() {
             Ok(program) => {
                 for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Let {
-                            token,
-                            identifier,
-                            value,
-                        } => {
-                            println!(
-                                "{} {} = {}",
-                                token.literal,
-                                identifier.to_value(),
-                                value.to_value()
-                            )
-                        }
-
-                        Statement::Return { token, value } => {
-                            println!("{} {}", token.literal, value.to_value())
-                        }
-                    }
+                    println!("Statement: {}", stmt.to_value());
                 }
             }
             Err(err) => println!("Parser error:{}", err),
