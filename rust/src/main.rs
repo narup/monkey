@@ -1,8 +1,7 @@
-use std::io::{self, Write};
+mod monkey;
 
 use crate::monkey::Node;
-
-mod monkey;
+use std::io::{self, Write};
 
 fn main() {
     println!("Welcome to Monkey Language!");
@@ -32,7 +31,7 @@ fn main() {
         match parser.parse() {
             Ok(program) => {
                 for stmt in program.statements.iter() {
-                    println!("Statement: {}", stmt.to_value());
+                    println!("Statement: {}", stmt.to_string());
                 }
             }
             Err(err) => println!("Parser error:{}", err),

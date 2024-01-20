@@ -5,11 +5,9 @@ use std::collections::HashMap;
 pub trait Node {
     //prints the node name
     fn name(&self) -> String;
-    fn to_value(&self) -> String;
+    fn to_string(&self) -> String;
 }
 
-#[derive(Display)]
-#[display(fmt = "Hello there!")]
 pub enum Statement {
     Let {
         token: Token,
@@ -18,6 +16,9 @@ pub enum Statement {
     },
     Return {
         token: Token,
+        value: Box<dyn Expression>,
+    },
+    Expr {
         value: Box<dyn Expression>,
     },
 }
@@ -42,7 +43,7 @@ impl Node for Identifier {
         "ident".to_string()
     }
 
-    fn to_value(&self) -> String {
+    fn to_string(&self) -> String {
         self.value.clone()
     }
 }
@@ -56,10 +57,11 @@ impl Node for Statement {
                 value: _,
             } => "let".to_string(),
             Statement::Return { token: _, value: _ } => "return".to_string(),
+            Statement::Expr { value: _ } => "expr".to_string(),
         }
     }
 
-    fn to_value(&self) -> String {
+    fn to_string(&self) -> String {
         match self {
             Statement::Let {
                 token,
@@ -67,15 +69,19 @@ impl Node for Statement {
                 value,
             } => {
                 format!(
-                    "{} {} = {}",
+                    "{} {} = {};",
                     token.literal,
-                    identifier.to_value(),
-                    value.to_value()
+                    identifier.to_string(),
+                    value.to_string()
                 )
             }
 
             Statement::Return { token, value } => {
-                format!("{} {}", token.literal, value.to_value())
+                format!("{} {};", token.literal, value.to_string())
+            }
+
+            Statement::Expr { value } => {
+                format!("{}", value.to_string())
             }
         }
     }
@@ -90,7 +96,7 @@ impl Node for MonkeyExpression {
         "expression".to_string()
     }
 
-    fn to_value(&self) -> String {
+    fn to_string(&self) -> String {
         self.value.clone()
     }
 }
@@ -149,10 +155,17 @@ impl Parser {
             } else if self.matches_current_token(TokenType::Return) {
                 let ret_stmt = self.parse_return_statement()?;
                 program.statements.push(ret_stmt);
+            } else {
+                let expr_value = self.parse_expression()?;
+                let expr_stmt = Statement::Expr { value: expr_value };
+                program.statements.push(expr_stmt);
+                if self.matches_peek_token(TokenType::Semicolon) {
+                    self.advance_tokens();
+                }
             }
+
             self.advance_tokens();
         }
-
         return Ok(program);
     }
 
@@ -471,13 +484,14 @@ mod tests {
     }
 
     #[test]
-    fn parser_let_statement_test() {
+    fn parser_test() {
         let input = r#"
         let x = 5;
         let y = 10;
         let foobar = 838383;
         return 30;
         return y;
+        foobar;
         "#;
 
         let lexer = Lexer::new(input.to_string());
@@ -495,8 +509,8 @@ mod tests {
                             println!(
                                 "Let statement parsed = {:?}, {:?}, {:?}!",
                                 token.literal,
-                                identifier.to_value(),
-                                value.to_value()
+                                identifier.to_string(),
+                                value.to_string()
                             );
                         }
 
@@ -504,12 +518,17 @@ mod tests {
                             println!(
                                 "Return statement parsed = {:?}, {:?}",
                                 token.literal,
-                                value.to_value()
+                                value.to_string()
                             );
+                        }
+
+                        Statement::Expr { value } => {
+                            println!("Expr statement = {:}", value.to_string());
                         }
                     }
                 }
             }
+
             Err(err) => panic!("parsing let statement failed {:?}", err),
         }
     }
