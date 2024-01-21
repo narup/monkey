@@ -19,8 +19,28 @@ pub enum Statement {
         value: Box<dyn Expression>,
     },
     Expr {
-        value: Box<dyn Expression>,
+        expr_type: ExprType,
     },
+}
+
+pub enum ExprType {
+    Identifier { value: Box<dyn Expression> },
+    IntegerLiteral { value: Box<IntegerLiteral> },
+    MonkeyExpression { value: Box<dyn Expression> },
+}
+
+impl Node for ExprType {
+    fn name(&self) -> String {
+        "expr_type".to_string()
+    }
+
+    fn to_string(&self) -> String {
+        match self {
+            ExprType::Identifier { value } => value.to_string(),
+            ExprType::IntegerLiteral { value } => value.to_string(),
+            ExprType::MonkeyExpression { value } => value.to_string(),
+        }
+    }
 }
 
 pub trait Expression: Node {
@@ -31,20 +51,41 @@ struct Identifier {
     value: String,
 }
 
+pub struct IntegerLiteral {
+    token: Token,
+    value: usize,
+}
+
 //In Monkey identifier can be an expression
 impl Expression for Identifier {
     fn expression_type(&self) -> String {
-        "expression".to_string()
+        "identifier".to_string()
     }
 }
 
 impl Node for Identifier {
     fn name(&self) -> String {
-        "ident".to_string()
+        "identifier".to_string()
     }
 
     fn to_string(&self) -> String {
         self.value.clone()
+    }
+}
+
+impl Expression for IntegerLiteral {
+    fn expression_type(&self) -> String {
+        return "integer".to_string();
+    }
+}
+
+impl Node for IntegerLiteral {
+    fn name(&self) -> String {
+        return self.token.literal.clone();
+    }
+
+    fn to_string(&self) -> String {
+        format!("{}", self.value)
     }
 }
 
@@ -57,7 +98,7 @@ impl Node for Statement {
                 value: _,
             } => "let".to_string(),
             Statement::Return { token: _, value: _ } => "return".to_string(),
-            Statement::Expr { value: _ } => "expr".to_string(),
+            Statement::Expr { expr_type: _ } => "expr".to_string(),
         }
     }
 
@@ -80,8 +121,8 @@ impl Node for Statement {
                 format!("{} {};", token.literal, value.to_string())
             }
 
-            Statement::Expr { value } => {
-                format!("{}", value.to_string())
+            Statement::Expr { expr_type } => {
+                format!("{}", expr_type.to_string())
             }
         }
     }
@@ -156,9 +197,10 @@ impl Parser {
                 let ret_stmt = self.parse_return_statement()?;
                 program.statements.push(ret_stmt);
             } else {
-                let expr_value = self.parse_expression()?;
-                let expr_stmt = Statement::Expr { value: expr_value };
+                let expr_stmt = self.parse_expression_statement()?;
                 program.statements.push(expr_stmt);
+
+                //semicolon is optional in expression statement
                 if self.matches_peek_token(TokenType::Semicolon) {
                     self.advance_tokens();
                 }
@@ -225,9 +267,41 @@ impl Parser {
         })
     }
 
+    fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
+        if self.matches_current_token(TokenType::Identifier) {
+            let indent_val = self.parse_identifier()?;
+            return Ok(Statement::Expr {
+                expr_type: ExprType::Identifier { value: indent_val },
+            });
+        }
+
+        if self.matches_current_token(TokenType::Int) {
+            let int_literal_val = self.parse_integer_literal()?;
+            return Ok(Statement::Expr {
+                expr_type: ExprType::IntegerLiteral {
+                    value: int_literal_val,
+                },
+            });
+        }
+
+        let expr_val = self.parse_expression()?;
+        return Ok(Statement::Expr {
+            expr_type: ExprType::MonkeyExpression { value: expr_val },
+        });
+    }
+
     fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
         return Ok(Box::new(Identifier {
             value: self.current_token.literal.clone(),
+        }));
+    }
+
+    fn parse_integer_literal(&mut self) -> Result<Box<IntegerLiteral>, ParserError> {
+        let token = Token::new(TokenType::Int, self.current_token.literal.clone());
+        let usize_value = self.current_token.literal.parse::<usize>().unwrap();
+        return Ok(Box::new(IntegerLiteral {
+            token,
+            value: usize_value,
         }));
     }
 
@@ -484,6 +558,56 @@ mod tests {
     }
 
     #[test]
+    fn parser_int_literal_test() {
+        let input = "10";
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Expr { expr_type } => match expr_type {
+                            ExprType::IntegerLiteral { value } => {
+                                assert_eq!(value.expression_type(), "integer");
+                                assert_eq!(value.value, 10);
+                            }
+                            _ => panic!("invalid expression type, expected integer literal"),
+                        },
+                        _ => panic!("invalid token type on expr"),
+                    };
+                }
+            }
+            Err(err) => panic!("parsing let statement failed {:?}", err),
+        }
+    }
+
+    #[test]
+    fn parser_identifier_expr_test() {
+        let input = "foobar";
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Expr { expr_type } => match expr_type {
+                            ExprType::Identifier { value } => {
+                                assert_eq!(value.expression_type(), "identifier");
+                                assert_eq!(value.to_string(), input);
+                            }
+                            _ => panic!("invalid expression type, expected identifier"),
+                        },
+                        _ => panic!("invalid token type on expr. expected identifier type"),
+                    };
+                }
+            }
+            Err(err) => panic!("parsing identifier expression failed {:?}", err),
+        }
+    }
+
+    #[test]
     fn parser_test() {
         let input = r#"
         let x = 5;
@@ -492,6 +616,7 @@ mod tests {
         return 30;
         return y;
         foobar;
+        10;
         "#;
 
         let lexer = Lexer::new(input.to_string());
@@ -522,8 +647,8 @@ mod tests {
                             );
                         }
 
-                        Statement::Expr { value } => {
-                            println!("Expr statement = {:}", value.to_string());
+                        Statement::Expr { expr_type } => {
+                            println!("Expr statement = {:}", expr_type.to_string());
                         }
                     }
                 }
