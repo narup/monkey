@@ -24,8 +24,9 @@ pub enum Statement {
 }
 
 pub enum ExprType {
-    Identifier { value: Box<dyn Expression> },
+    Identifier { value: Box<Identifier> },
     IntegerLiteral { value: Box<IntegerLiteral> },
+    PrefixExpression { value: Box<PrefixExpression> },
     MonkeyExpression { value: Box<dyn Expression> },
 }
 
@@ -38,6 +39,7 @@ impl Node for ExprType {
         match self {
             ExprType::Identifier { value } => value.to_string(),
             ExprType::IntegerLiteral { value } => value.to_string(),
+            ExprType::PrefixExpression { value } => value.to_string(),
             ExprType::MonkeyExpression { value } => value.to_string(),
         }
     }
@@ -47,13 +49,19 @@ pub trait Expression: Node {
     fn expression_type(&self) -> String;
 }
 
-struct Identifier {
+pub struct Identifier {
     value: String,
 }
 
 pub struct IntegerLiteral {
     token: Token,
     value: usize,
+}
+
+pub struct PrefixExpression {
+    prefix_token: Token,
+    operator: String,
+    right: Box<dyn Expression>,
 }
 
 //In Monkey identifier can be an expression
@@ -86,6 +94,22 @@ impl Node for IntegerLiteral {
 
     fn to_string(&self) -> String {
         format!("{}", self.value)
+    }
+}
+
+impl Node for PrefixExpression {
+    fn name(&self) -> String {
+        self.prefix_token.literal.to_string()
+    }
+
+    fn to_string(&self) -> String {
+        format!("({}{})", self.operator, self.right.to_string())
+    }
+}
+
+impl Expression for PrefixExpression {
+    fn expression_type(&self) -> String {
+        "prefix".to_string()
     }
 }
 
@@ -284,6 +308,15 @@ impl Parser {
             });
         }
 
+        if self.matches_current_token(TokenType::Bang)
+            || self.matches_current_token(TokenType::Minus)
+        {
+            let prefix_expr = self.parse_prefix_expression()?;
+            return Ok(Statement::Expr {
+                expr_type: ExprType::PrefixExpression { value: prefix_expr },
+            });
+        }
+
         let expr_val = self.parse_expression()?;
         return Ok(Statement::Expr {
             expr_type: ExprType::MonkeyExpression { value: expr_val },
@@ -302,6 +335,23 @@ impl Parser {
         return Ok(Box::new(IntegerLiteral {
             token,
             value: usize_value,
+        }));
+    }
+
+    fn parse_prefix_expression(&mut self) -> Result<Box<PrefixExpression>, ParserError> {
+        let prefix_token = Token::new(
+            self.current_token.token_type,
+            self.current_token.literal.clone(),
+        );
+        let operator = prefix_token.literal.clone();
+
+        self.advance_tokens();
+
+        let right = self.parse_expression()?;
+        return Ok(Box::new(PrefixExpression {
+            prefix_token,
+            operator,
+            right,
         }));
     }
 
@@ -557,8 +607,44 @@ mod tests {
         assert_eq!("monkey", mod_name());
     }
 
+    fn parser_for_input(input: String) -> Parser {
+        let lexer = Lexer::new(input);
+        Parser::new(lexer)
+    }
+
     #[test]
-    fn parser_int_literal_test() {
+    fn test_prefix_expressions() {
+        let input = r#"
+        !5;
+        -10;
+        "#;
+
+        let mut parser = parser_for_input(input.to_string());
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Expr { expr_type } => match expr_type {
+                            ExprType::PrefixExpression { value } => {
+                                assert_eq!(value.expression_type(), "prefix");
+                                if value.operator != "-" && value.operator != "!" {
+                                    println!("actual operator {}", value.operator);
+                                    panic!("invalid operator, expected bang or minus");
+                                }
+                                println!("expression value:{}", value.right.to_string());
+                            }
+                            _ => panic!("invalid expression type, expected prefix expression"),
+                        },
+                        _ => panic!("invalid statement, expected expression"),
+                    }
+                }
+            }
+            Err(err) => panic!("test failed {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_parser_int_literal() {
         let input = "10";
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
@@ -583,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_identifier_expr_test() {
+    fn test_parser_identifier_expr() {
         let input = "foobar";
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
@@ -608,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_test() {
+    fn test_parser() {
         let input = r#"
         let x = 5;
         let y = 10;
@@ -659,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn lexer_tests() {
+    fn test_lexer() {
         let input = String::from("+{}();,");
         println!("First test input {}", input);
         lexer_test(
