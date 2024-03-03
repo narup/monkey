@@ -27,8 +27,16 @@ pub enum ExprType {
     Identifier { value: Box<Identifier> },
     IntegerLiteral { value: Box<IntegerLiteral> },
     PrefixExpression { value: Box<PrefixExpression> },
+    InfixExpression { value: Box<InfixExpression> },
     MonkeyExpression { value: Box<dyn Expression> },
 }
+
+const PRECEDENCE_EQUALS: i32 = 1; //==
+const PRECEDENCE_LESS_GREATER: i32 = 2; //> or <
+const PRECEDENCE_SUM: i32 = 3; // +
+const PRECEDENCE_PRODUCT: i32 = 4; // *
+const PRECEDENCE_PREFIX: i32 = 5; // -X or !X
+const PRECEDENCE_CALL: i32 = 6; // my_function(X)
 
 impl Node for ExprType {
     fn name(&self) -> String {
@@ -40,6 +48,7 @@ impl Node for ExprType {
             ExprType::Identifier { value } => value.to_string(),
             ExprType::IntegerLiteral { value } => value.to_string(),
             ExprType::PrefixExpression { value } => value.to_string(),
+            ExprType::InfixExpression { value } => value.to_string(),
             ExprType::MonkeyExpression { value } => value.to_string(),
         }
     }
@@ -61,6 +70,12 @@ pub struct IntegerLiteral {
 pub struct PrefixExpression {
     prefix_token: Token,
     operator: String,
+    right: Box<dyn Expression>,
+}
+
+pub struct InfixExpression {
+    operator_token: Token,
+    left: Box<dyn Expression>,
     right: Box<dyn Expression>,
 }
 
@@ -110,6 +125,27 @@ impl Node for PrefixExpression {
 impl Expression for PrefixExpression {
     fn expression_type(&self) -> String {
         "prefix".to_string()
+    }
+}
+
+impl Node for InfixExpression {
+    fn name(&self) -> String {
+        self.operator_token.literal.to_string()
+    }
+
+    fn to_string(&self) -> String {
+        format!(
+            "({} {} {})",
+            self.left.to_string(),
+            self.operator_token.literal,
+            self.right.to_string()
+        )
+    }
+}
+
+impl Expression for InfixExpression {
+    fn expression_type(&self) -> String {
+        "infix".to_string()
     }
 }
 
@@ -353,6 +389,12 @@ impl Parser {
             operator,
             right,
         }));
+    }
+
+    fn parse_infix_expression(
+        &mut self,
+        left: Box<dyn Expression>,
+    ) -> Result<Box<InfixExpression>, ParserError> {
     }
 
     fn parse_expression(&mut self) -> Result<Box<dyn Expression>, ParserError> {
@@ -613,6 +655,47 @@ mod tests {
     }
 
     #[test]
+    fn test_infix_expressions() {
+        let input = r#"
+            5 + 5;
+            5 - 5;
+            5 * 5;
+            5 / 5;
+            5 > 5;
+            5 < 5;
+            5 == 5;
+            5 != 5;
+        "#;
+
+        let mut parser = parser_for_input(input.to_string());
+        match parser.parse() {
+            Ok(program) => {
+                for stmt in program.statements.iter() {
+                    match stmt {
+                        Statement::Expr { expr_type } => match expr_type {
+                            ExprType::InfixExpression { value } => {
+                                println!(
+                                    "({} {} {})",
+                                    value.left.to_string(),
+                                    value.operator_token.literal,
+                                    value.right.to_string()
+                                )
+                            }
+                            _ => panic!("invalid expression type, expecting infix expression type"),
+                        },
+                        _ => {
+                            panic!("invalid statement type, expecting expression type")
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                panic!("test failed:{:?}", err)
+            }
+        }
+    }
+
+    #[test]
     fn test_prefix_expressions() {
         let input = r#"
         !5;
@@ -631,7 +714,12 @@ mod tests {
                                     println!("actual operator {}", value.operator);
                                     panic!("invalid operator, expected bang or minus");
                                 }
-                                println!("expression value:{}", value.right.to_string());
+
+                                println!("expression value:{}", value.to_string());
+                                let expr_str_value = value.to_string();
+                                if expr_str_value != "(!5)" && expr_str_value != "(-10)" {
+                                    panic!("invalid prefix expression values");
+                                }
                             }
                             _ => panic!("invalid expression type, expected prefix expression"),
                         },
