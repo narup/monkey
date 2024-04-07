@@ -250,24 +250,24 @@ impl Parser {
         };
 
         while self.is_valid_token() {
-            if self.matches_current_token(TokenType::Let) {
-                let let_stmt = self.parse_let_statement()?; //handle let statement
-                program.statements.push(let_stmt);
-            } else if self.matches_current_token(TokenType::Return) {
-                let ret_stmt = self.parse_return_statement()?;
-                program.statements.push(ret_stmt);
-            } else {
-                let expr_stmt = self.parse_expression_statement()?;
-                program.statements.push(expr_stmt);
+            match self.current_token.token_type {
+                TokenType::Let => program.statements.push(self.parse_let_statement()?),
+                TokenType::Return => program.statements.push(self.parse_return_statement()?),
+                _ => {
+                    println!("parsing expression statement");
 
-                //semicolon is optional in expression statement
-                if self.matches_peek_token(TokenType::Semicolon) {
-                    self.advance_tokens();
+                    let expr_stmt = self.parse_expression_statement()?;
+                    program.statements.push(expr_stmt);
+
+                    //semicolon is optional in expression statement
+                    if self.matches_peek_token(TokenType::Semicolon) {
+                        self.advance_tokens();
+                    }
                 }
             }
-
             self.advance_tokens();
         }
+
         return Ok(program);
     }
 
@@ -328,35 +328,36 @@ impl Parser {
     }
 
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
-        if self.matches_current_token(TokenType::Identifier) {
-            let indent_val = self.parse_identifier()?;
-            return Ok(Statement::Expr {
-                expr_type: ExprType::Identifier { value: indent_val },
-            });
-        }
+        match self.current_token.token_type {
+            TokenType::Identifier => {
+                let indent_val = self.parse_identifier()?;
+                return Ok(Statement::Expr {
+                    expr_type: ExprType::Identifier { value: indent_val },
+                });
+            }
 
-        if self.matches_current_token(TokenType::Int) {
-            let int_literal_val = self.parse_integer_literal()?;
-            return Ok(Statement::Expr {
-                expr_type: ExprType::IntegerLiteral {
-                    value: int_literal_val,
-                },
-            });
-        }
+            TokenType::Int => {
+                let int_literal_val = self.parse_integer_literal()?;
+                return Ok(Statement::Expr {
+                    expr_type: ExprType::IntegerLiteral {
+                        value: int_literal_val,
+                    },
+                });
+            }
 
-        if self.matches_current_token(TokenType::Bang)
-            || self.matches_current_token(TokenType::Minus)
-        {
-            let prefix_expr = self.parse_prefix_expression()?;
-            return Ok(Statement::Expr {
-                expr_type: ExprType::PrefixExpression { value: prefix_expr },
-            });
+            TokenType::Bang | TokenType::Minus => {
+                let prefix_expr = self.parse_prefix_expression()?;
+                return Ok(Statement::Expr {
+                    expr_type: ExprType::PrefixExpression { value: prefix_expr },
+                });
+            }
+            _ => {
+                let expr_val = self.parse_expression()?;
+                return Ok(Statement::Expr {
+                    expr_type: ExprType::MonkeyExpression { value: expr_val },
+                });
+            }
         }
-
-        let expr_val = self.parse_expression()?;
-        return Ok(Statement::Expr {
-            expr_type: ExprType::MonkeyExpression { value: expr_val },
-        });
     }
 
     fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
@@ -395,9 +396,12 @@ impl Parser {
         &mut self,
         left: Box<dyn Expression>,
     ) -> Result<Box<InfixExpression>, ParserError> {
+        return Err(ParserError::SyntaxError(
+            "missing semicolon on return statement".to_string(),
+        ));
     }
 
-    fn parse_expression(&mut self) -> Result<Box<dyn Expression>, ParserError> {
+    fn parse_expression(&mut self) -> Result<Box<MonkeyExpression>, ParserError> {
         Ok(Box::new(MonkeyExpression {
             value: self.current_token.literal.clone(),
         }))
@@ -405,10 +409,6 @@ impl Parser {
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
         return self.peek_token.token_type == token_type;
-    }
-
-    fn matches_current_token(&self, token_type: TokenType) -> bool {
-        return self.current_token.token_type == token_type;
     }
 
     fn advance_tokens(&mut self) {
@@ -597,7 +597,7 @@ lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Illegal,
     EndOfFile,
@@ -700,6 +700,7 @@ mod tests {
         let input = r#"
         !5;
         -10;
+        -bar;
         "#;
 
         let mut parser = parser_for_input(input.to_string());
@@ -716,8 +717,12 @@ mod tests {
                                 }
 
                                 println!("expression value:{}", value.to_string());
+
                                 let expr_str_value = value.to_string();
-                                if expr_str_value != "(!5)" && expr_str_value != "(-10)" {
+                                if expr_str_value != "(!5)"
+                                    && expr_str_value != "(-10)"
+                                    && expr_str_value != "(-bar)"
+                                {
                                     panic!("invalid prefix expression values");
                                 }
                             }
