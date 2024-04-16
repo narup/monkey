@@ -1,11 +1,57 @@
 use derive_more::Display;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::{collections::HashMap, usize};
 
 pub trait Node {
     //prints the node name
     fn name(&self) -> String;
     fn to_string(&self) -> String;
+}
+
+const PRECEDENCE_LOWEST: i32 = 0; //lowest
+const PRECEDENCE_EQUALS: i32 = 1; //==
+const PRECEDENCE_LESS_GREATER: i32 = 2; //> or <
+const PRECEDENCE_SUM: i32 = 3; // +
+const PRECEDENCE_PRODUCT: i32 = 4; // *
+const PRECEDENCE_PREFIX: i32 = 5; // -X or !X
+const PRECEDENCE_CALL: i32 = 6; // my_function(X)
+
+pub trait Expression: Node {
+    fn get_type(&self) -> ExpressionType;
+    fn get_token(&self) -> &Token;
+    fn eval(&self) -> Result<EvalResult, EvalError>;
+}
+
+pub enum EvalResult {
+    String(String),
+    Integer(i32),
+    None,
+}
+
+#[derive(Debug, Display)]
+pub enum EvalError {
+    ExpressionError(String),
+}
+
+pub struct Identifier {
+    token: Token,
+    name: String,
+}
+
+pub struct IntegerLiteral {
+    token: Token,
+    value: usize,
+}
+
+pub struct PrefixExpression {
+    prefix_token: Token,
+    right: Box<dyn Expression>,
+}
+
+pub struct InfixExpression {
+    operator_token: Token,
+    left: Box<dyn Expression>,
+    right: Box<dyn Expression>,
 }
 
 pub enum Statement {
@@ -18,71 +64,31 @@ pub enum Statement {
         token: Token,
         value: Box<dyn Expression>,
     },
-    Expr {
-        expr_type: ExprType,
+    Expression {
+        value: Box<dyn Expression>,
     },
 }
 
-pub enum ExprType {
-    Identifier { value: Box<Identifier> },
-    IntegerLiteral { value: Box<IntegerLiteral> },
-    PrefixExpression { value: Box<PrefixExpression> },
-    InfixExpression { value: Box<InfixExpression> },
-    MonkeyExpression { value: Box<dyn Expression> },
-}
-
-const PRECEDENCE_EQUALS: i32 = 1; //==
-const PRECEDENCE_LESS_GREATER: i32 = 2; //> or <
-const PRECEDENCE_SUM: i32 = 3; // +
-const PRECEDENCE_PRODUCT: i32 = 4; // *
-const PRECEDENCE_PREFIX: i32 = 5; // -X or !X
-const PRECEDENCE_CALL: i32 = 6; // my_function(X)
-
-impl Node for ExprType {
-    fn name(&self) -> String {
-        "expr_type".to_string()
-    }
-
-    fn to_string(&self) -> String {
-        match self {
-            ExprType::Identifier { value } => value.to_string(),
-            ExprType::IntegerLiteral { value } => value.to_string(),
-            ExprType::PrefixExpression { value } => value.to_string(),
-            ExprType::InfixExpression { value } => value.to_string(),
-            ExprType::MonkeyExpression { value } => value.to_string(),
-        }
-    }
-}
-
-pub trait Expression: Node {
-    fn expression_type(&self) -> String;
-}
-
-pub struct Identifier {
-    value: String,
-}
-
-pub struct IntegerLiteral {
-    token: Token,
-    value: usize,
-}
-
-pub struct PrefixExpression {
-    prefix_token: Token,
-    operator: String,
-    right: Box<dyn Expression>,
-}
-
-pub struct InfixExpression {
-    operator_token: Token,
-    left: Box<dyn Expression>,
-    right: Box<dyn Expression>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExpressionType {
+    Identifier,
+    IntegerLiteral,
+    PrefixExpression,
+    InfixExpression,
 }
 
 //In Monkey identifier can be an expression
 impl Expression for Identifier {
-    fn expression_type(&self) -> String {
-        "identifier".to_string()
+    fn get_type(&self) -> ExpressionType {
+        ExpressionType::Identifier
+    }
+
+    fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    fn eval(&self) -> Result<EvalResult, EvalError> {
+        return Ok(EvalResult::String(self.name.clone()));
     }
 }
 
@@ -92,13 +98,21 @@ impl Node for Identifier {
     }
 
     fn to_string(&self) -> String {
-        self.value.clone()
+        self.name.clone()
     }
 }
 
 impl Expression for IntegerLiteral {
-    fn expression_type(&self) -> String {
-        return "integer".to_string();
+    fn get_type(&self) -> ExpressionType {
+        ExpressionType::IntegerLiteral
+    }
+
+    fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    fn eval(&self) -> Result<EvalResult, EvalError> {
+        return Ok(EvalResult::Integer(self.value as i32));
     }
 }
 
@@ -118,13 +132,21 @@ impl Node for PrefixExpression {
     }
 
     fn to_string(&self) -> String {
-        format!("({}{})", self.operator, self.right.to_string())
+        format!("({}{})", self.prefix_token.literal, self.right.to_string())
     }
 }
 
 impl Expression for PrefixExpression {
-    fn expression_type(&self) -> String {
-        "prefix".to_string()
+    fn get_type(&self) -> ExpressionType {
+        ExpressionType::PrefixExpression
+    }
+
+    fn get_token(&self) -> &Token {
+        return &self.prefix_token;
+    }
+
+    fn eval(&self) -> Result<EvalResult, EvalError> {
+        return self.right.eval();
     }
 }
 
@@ -144,8 +166,16 @@ impl Node for InfixExpression {
 }
 
 impl Expression for InfixExpression {
-    fn expression_type(&self) -> String {
-        "infix".to_string()
+    fn get_type(&self) -> ExpressionType {
+        ExpressionType::InfixExpression
+    }
+
+    fn get_token(&self) -> &Token {
+        return &self.operator_token;
+    }
+
+    fn eval(&self) -> Result<EvalResult, EvalError> {
+        return Ok(EvalResult::None); //TODO: this needs implementation
     }
 }
 
@@ -158,7 +188,7 @@ impl Node for Statement {
                 value: _,
             } => "let".to_string(),
             Statement::Return { token: _, value: _ } => "return".to_string(),
-            Statement::Expr { expr_type: _ } => "expr".to_string(),
+            Statement::Expression { value } => value.to_string(),
         }
     }
 
@@ -181,30 +211,10 @@ impl Node for Statement {
                 format!("{} {};", token.literal, value.to_string())
             }
 
-            Statement::Expr { expr_type } => {
-                format!("{}", expr_type.to_string())
+            Statement::Expression { value } => {
+                format!("{}", value.to_string())
             }
         }
-    }
-}
-
-struct MonkeyExpression {
-    value: String,
-}
-
-impl Node for MonkeyExpression {
-    fn name(&self) -> String {
-        "expression".to_string()
-    }
-
-    fn to_string(&self) -> String {
-        self.value.clone()
-    }
-}
-
-impl Expression for MonkeyExpression {
-    fn expression_type(&self) -> String {
-        "monkey_expression".to_string()
     }
 }
 
@@ -221,6 +231,7 @@ pub struct Parser {
     lexer: Lexer,
     current_token: Token,
     peek_token: Token,
+    debug_mode: bool,
 }
 
 impl Parser {
@@ -235,16 +246,22 @@ impl Parser {
                 token_type: TokenType::Illegal,
                 literal: "Illegal".to_string(),
             },
+            debug_mode: true,
         };
 
         p.current_token = p.lexer.next_token();
         p.peek_token = p.lexer.next_token();
+
+        if p.debug_mode {
+            println!("Token:{:?}", p.current_token.token_type);
+        }
 
         return p;
     }
 
     /// Returns the parse of this [`Parser`].
     pub fn parse(&mut self) -> Result<Program, ParserError> {
+        //program with statements
         let mut program = Program {
             statements: Vec::new(),
         };
@@ -254,8 +271,6 @@ impl Parser {
                 TokenType::Let => program.statements.push(self.parse_let_statement()?),
                 TokenType::Return => program.statements.push(self.parse_return_statement()?),
                 _ => {
-                    println!("parsing expression statement");
-
                     let expr_stmt = self.parse_expression_statement()?;
                     program.statements.push(expr_stmt);
 
@@ -292,78 +307,134 @@ impl Parser {
         //skip assign token
         self.advance_tokens();
 
-        let value = self.parse_expression()?;
-        if !self.matches_peek_token(TokenType::Semicolon) {
-            return Err(ParserError::SyntaxError("missing semicolon".to_string()));
+        let expression_result = self.parse_expression(PRECEDENCE_LOWEST);
+        match expression_result {
+            Ok(expression) => {
+                if !self.matches_peek_token(TokenType::Semicolon) {
+                    return Err(ParserError::SyntaxError(
+                        "missing semicolon on let statement".to_string(),
+                    ));
+                }
+
+                //skip semicolon
+                self.advance_tokens();
+
+                Ok(Statement::Let {
+                    token: let_token,
+                    identifier,
+                    value: expression,
+                })
+            }
+            Err(err) => Err(err),
         }
-
-        //skip semicolon
-        self.advance_tokens();
-
-        Ok(Statement::Let {
-            token: let_token,
-            identifier,
-            value,
-        })
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement, ParserError> {
         let ret_token = Token::new(TokenType::Return, self.current_token.literal.clone());
         self.advance_tokens();
 
-        let value = self.parse_expression()?;
-        if !self.matches_peek_token(TokenType::Semicolon) {
-            return Err(ParserError::SyntaxError(
-                "missing semicolon on return statement".to_string(),
-            ));
+        let expression_result = self.parse_expression(PRECEDENCE_LOWEST);
+        match expression_result {
+            Ok(expression) => {
+                if !self.matches_peek_token(TokenType::Semicolon) {
+                    return Err(ParserError::SyntaxError(
+                        "missing semicolon on return statement".to_string(),
+                    ));
+                }
+
+                //skip semicolon
+                self.advance_tokens();
+                Ok(Statement::Return {
+                    token: ret_token,
+                    value: expression,
+                })
+            }
+            Err(err) => Err(err),
         }
-
-        //skip Semicolon
-        self.advance_tokens();
-
-        Ok(Statement::Return {
-            token: ret_token,
-            value,
-        })
     }
 
+    //in monkey expressions is a statement as well
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
-        match self.current_token.token_type {
-            TokenType::Identifier => {
-                let indent_val = self.parse_identifier()?;
-                return Ok(Statement::Expr {
-                    expr_type: ExprType::Identifier { value: indent_val },
-                });
-            }
+        let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+        return Ok(Statement::Expression { value: expression });
+    }
 
-            TokenType::Int => {
-                let int_literal_val = self.parse_integer_literal()?;
-                return Ok(Statement::Expr {
-                    expr_type: ExprType::IntegerLiteral {
-                        value: int_literal_val,
-                    },
-                });
-            }
+    fn parse_expression(&mut self, precedence: i32) -> Result<Box<dyn Expression>, ParserError> {
+        let left_expression_result: Option<Box<dyn Expression>> =
+            match self.current_token.token_type {
+                TokenType::Identifier => Some(self.parse_identifier()?),
+                TokenType::Int => Some(self.parse_integer_literal()?),
+                TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()?),
+                _ => None,
+            };
 
-            TokenType::Bang | TokenType::Minus => {
-                let prefix_expr = self.parse_prefix_expression()?;
-                return Ok(Statement::Expr {
-                    expr_type: ExprType::PrefixExpression { value: prefix_expr },
-                });
+        let mut final_expression: Box<dyn Expression>;
+        match left_expression_result {
+            Some(left_expression) => {
+                final_expression = left_expression;
+
+                while !self.matches_peek_token(TokenType::Semicolon)
+                    && precedence < self.peek_precedence()
+                {
+                    //if we find a higher precedence expression process it
+                    match self.peek_token.token_type {
+                        TokenType::Plus
+                        | TokenType::Minus
+                        | TokenType::Slash
+                        | TokenType::Asterisk
+                        | TokenType::Equal
+                        | TokenType::NotEqual
+                        | TokenType::LessThan
+                        | TokenType::GreaterThan => {
+                            self.advance_tokens();
+
+                            let expression = self.parse_infix_expression(final_expression)?;
+                            final_expression = expression;
+                        }
+                        _ => return Ok(final_expression), //no expression left
+                    }
+                }
+                return Ok(final_expression);
             }
-            _ => {
-                let expr_val = self.parse_expression()?;
-                return Ok(Statement::Expr {
-                    expr_type: ExprType::MonkeyExpression { value: expr_val },
-                });
+            None => {
+                return Err(ParserError::SyntaxError(
+                    "missing semicolon on return statement".to_string(),
+                ))
             }
         }
+    }
+
+    fn parse_infix_expression(
+        &mut self,
+        left: Box<dyn Expression>,
+    ) -> Result<Box<dyn Expression>, ParserError> {
+        let operator_token = Token::new(
+            self.current_token.token_type,
+            self.current_token.literal.clone(),
+        );
+
+        let precedence = self.current_precedence();
+        self.advance_tokens();
+
+        let right = self.parse_expression(precedence)?;
+
+        return Ok(Box::new(InfixExpression {
+            operator_token,
+            left,
+            right,
+        }));
     }
 
     fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
-        return Ok(Box::new(Identifier {
-            value: self.current_token.literal.clone(),
-        }));
+        let ident_val = Box::new(Identifier {
+            token: Token {
+                token_type: TokenType::Identifier,
+                literal: self.current_token.literal.clone(),
+            },
+            name: self.current_token.literal.clone(),
+        });
+
+        return Ok(ident_val);
     }
 
     fn parse_integer_literal(&mut self) -> Result<Box<IntegerLiteral>, ParserError> {
@@ -380,31 +451,20 @@ impl Parser {
             self.current_token.token_type,
             self.current_token.literal.clone(),
         );
-        let operator = prefix_token.literal.clone();
 
         self.advance_tokens();
 
-        let right = self.parse_expression()?;
-        return Ok(Box::new(PrefixExpression {
-            prefix_token,
-            operator,
-            right,
-        }));
-    }
-
-    fn parse_infix_expression(
-        &mut self,
-        left: Box<dyn Expression>,
-    ) -> Result<Box<InfixExpression>, ParserError> {
-        return Err(ParserError::SyntaxError(
-            "missing semicolon on return statement".to_string(),
-        ));
-    }
-
-    fn parse_expression(&mut self) -> Result<Box<MonkeyExpression>, ParserError> {
-        Ok(Box::new(MonkeyExpression {
-            value: self.current_token.literal.clone(),
-        }))
+        let expression_result = self.parse_expression(PRECEDENCE_LOWEST);
+        match expression_result {
+            Ok(expression) => {
+                let prefix_expr = Box::new(PrefixExpression {
+                    prefix_token,
+                    right: expression,
+                });
+                return Ok(prefix_expr);
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
@@ -416,10 +476,28 @@ impl Parser {
         self.current_token =
             Token::new(self.peek_token.token_type, self.peek_token.literal.clone());
         self.peek_token = self.lexer.next_token();
+
+        if self.debug_mode {
+            println!("Token:{:?}", self.current_token.token_type);
+        }
     }
 
     fn is_valid_token(&mut self) -> bool {
         return self.current_token.token_type != TokenType::EndOfFile;
+    }
+
+    fn peek_precedence(&mut self) -> i32 {
+        match PRECEDENCES.get(&self.peek_token.token_type) {
+            Some(p) => return *p,
+            _ => return PRECEDENCE_LOWEST,
+        }
+    }
+
+    fn current_precedence(&mut self) -> i32 {
+        match PRECEDENCES.get(&self.current_token.token_type) {
+            Some(p) => return *p,
+            _ => return PRECEDENCE_LOWEST,
+        }
     }
 }
 
@@ -595,6 +673,19 @@ lazy_static! {
 
         map
     };
+    static ref PRECEDENCES: HashMap<TokenType, i32> = {
+        let mut map = HashMap::new();
+        map.insert(TokenType::Equal, PRECEDENCE_EQUALS);
+        map.insert(TokenType::NotEqual, PRECEDENCE_EQUALS);
+        map.insert(TokenType::LessThan, PRECEDENCE_LESS_GREATER);
+        map.insert(TokenType::GreaterThan, PRECEDENCE_LESS_GREATER);
+        map.insert(TokenType::Plus, PRECEDENCE_SUM);
+        map.insert(TokenType::Minus, PRECEDENCE_SUM);
+        map.insert(TokenType::Slash, PRECEDENCE_PRODUCT);
+        map.insert(TokenType::Asterisk, PRECEDENCE_PRODUCT);
+
+        map
+    };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -655,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn test_infix_expressions() {
+    fn test_parser_infix_expressions() {
         let input = r#"
             5 + 5;
             5 - 5;
@@ -667,122 +758,113 @@ mod tests {
             5 != 5;
         "#;
 
+        let output = vec![
+            "(5 + 5)".to_string(),
+            "(5 - 5)".to_string(),
+            "(5 * 5)".to_string(),
+            "(5 / 5)".to_string(),
+            "(5 > 5)".to_string(),
+            "(5 < 5)".to_string(),
+            "(5 == 5)".to_string(),
+            "(5 != 5)".to_string(),
+        ];
+
         let mut parser = parser_for_input(input.to_string());
-        match parser.parse() {
-            Ok(program) => {
-                for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Expr { expr_type } => match expr_type {
-                            ExprType::InfixExpression { value } => {
-                                println!(
-                                    "({} {} {})",
-                                    value.left.to_string(),
-                                    value.operator_token.literal,
-                                    value.right.to_string()
-                                )
-                            }
-                            _ => panic!("invalid expression type, expecting infix expression type"),
-                        },
-                        _ => {
-                            panic!("invalid statement type, expecting expression type")
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                panic!("test failed:{:?}", err)
+        let program = parser
+            .parse()
+            .expect("parsing infix expressions program failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                let actual_val = value.to_string();
+                assert!(actual_val.eq_ignore_ascii_case(&output[index]));
+                println!("Output infix expression: {}", actual_val);
             }
         }
     }
 
     #[test]
-    fn test_prefix_expressions() {
+    fn test_parser_prefix_expressions() {
         let input = r#"
         !5;
         -10;
         -bar;
         "#;
 
+        let output = vec!["!5".to_string(), "-10".to_string(), "-bar".to_string()];
+
         let mut parser = parser_for_input(input.to_string());
-        match parser.parse() {
-            Ok(program) => {
-                for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Expr { expr_type } => match expr_type {
-                            ExprType::PrefixExpression { value } => {
-                                assert_eq!(value.expression_type(), "prefix");
-                                if value.operator != "-" && value.operator != "!" {
-                                    println!("actual operator {}", value.operator);
-                                    panic!("invalid operator, expected bang or minus");
-                                }
-
-                                println!("expression value:{}", value.to_string());
-
-                                let expr_str_value = value.to_string();
-                                if expr_str_value != "(!5)"
-                                    && expr_str_value != "(-10)"
-                                    && expr_str_value != "(-bar)"
-                                {
-                                    panic!("invalid prefix expression values");
-                                }
-                            }
-                            _ => panic!("invalid expression type, expected prefix expression"),
-                        },
-                        _ => panic!("invalid statement, expected expression"),
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                let expr_val = &output[index];
+                let res = value.eval().expect("prefix expression eval failed");
+                match res {
+                    EvalResult::Integer(int_val) => {
+                        let final_val = format!("{}{}", value.get_token().literal, int_val);
+                        assert!(final_val.eq_ignore_ascii_case(expr_val));
                     }
+                    EvalResult::String(str_val) => {
+                        let final_val = format!("{}{}", value.get_token().literal, str_val);
+                        assert!(final_val.eq_ignore_ascii_case(expr_val));
+                    }
+                    EvalResult::None => panic!("parsing prefix expression failed, found none"),
                 }
+            } else {
+                panic!("parsing failed, incorrect expression type found");
             }
-            Err(err) => panic!("test failed {:?}", err),
         }
     }
 
     #[test]
     fn test_parser_int_literal() {
-        let input = "10";
+        let input = r#"
+        10;
+        4;
+        100;
+        "#;
+
+        let output: Vec<i32> = vec![10, 4, 100];
+
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
 
-        match parser.parse() {
-            Ok(program) => {
-                for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Expr { expr_type } => match expr_type {
-                            ExprType::IntegerLiteral { value } => {
-                                assert_eq!(value.expression_type(), "integer");
-                                assert_eq!(value.value, 10);
-                            }
-                            _ => panic!("invalid expression type, expected integer literal"),
-                        },
-                        _ => panic!("invalid token type on expr"),
-                    };
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                let res = value.eval().expect("int literal expression eval failed");
+                if let EvalResult::Integer(int_val) = res {
+                    assert_eq!(int_val, *output.get(index).unwrap());
+                } else {
+                    panic!("invalid eval result type");
                 }
+            } else {
+                panic!("invalid expression type");
             }
-            Err(err) => panic!("parsing let statement failed {:?}", err),
         }
     }
 
     #[test]
     fn test_parser_identifier_expr() {
-        let input = "foobar";
+        let input = r#"
+        foobar;
+        a;
+        my_var;
+        "#;
+
+        let output: Vec<String> = vec!["foobar".to_string(), "a".to_string(), "my_var".to_string()];
+
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
 
-        match parser.parse() {
-            Ok(program) => {
-                for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Expr { expr_type } => match expr_type {
-                            ExprType::Identifier { value } => {
-                                assert_eq!(value.expression_type(), "identifier");
-                                assert_eq!(value.to_string(), input);
-                            }
-                            _ => panic!("invalid expression type, expected identifier"),
-                        },
-                        _ => panic!("invalid token type on expr. expected identifier type"),
-                    };
-                }
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                assert!(value
+                    .to_string()
+                    .eq_ignore_ascii_case(output.get(index).unwrap()));
+            } else {
+                panic!("invalid token type on expr. expected identifier type");
             }
-            Err(err) => panic!("parsing identifier expression failed {:?}", err),
         }
     }
 
@@ -796,45 +878,43 @@ mod tests {
         return y;
         foobar;
         10;
+        5 + 2;
+        4 + y;
         "#;
 
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
+        let program = parser
+            .parse()
+            .expect("parsing program with various statements failed");
 
-        match parser.parse() {
-            Ok(program) => {
-                for stmt in program.statements.iter() {
-                    match stmt {
-                        Statement::Let {
-                            token,
-                            identifier,
-                            value,
-                        } => {
-                            println!(
-                                "Let statement parsed = {:?}, {:?}, {:?}!",
-                                token.literal,
-                                identifier.to_string(),
-                                value.to_string()
-                            );
-                        }
-
-                        Statement::Return { token, value } => {
-                            println!(
-                                "Return statement parsed = {:?}, {:?}",
-                                token.literal,
-                                value.to_string()
-                            );
-                        }
-
-                        Statement::Expr { expr_type } => {
-                            println!("Expr statement = {:}", expr_type.to_string());
-                        }
-                    }
+        for (_, stmt) in program.statements.iter().enumerate() {
+            match stmt {
+                Statement::Let {
+                    token,
+                    identifier,
+                    value,
+                } => {
+                    let str_val = expression_string_value(&value);
+                    println!("{} {} = {}", token.literal, identifier.to_string(), str_val);
+                }
+                Statement::Return { token, value } => {
+                    let str_val = expression_string_value(&value);
+                    println!("{} {}", token.literal, str_val);
+                }
+                Statement::Expression { value } => {
+                    println!("{}", value.to_string());
                 }
             }
-
-            Err(err) => panic!("parsing let statement failed {:?}", err),
         }
+    }
+
+    fn expression_string_value(expression: &Box<dyn Expression>) -> String {
+        return match expression.eval().expect("eval result expected") {
+            EvalResult::Integer(int_val) => format!("{}", int_val),
+            EvalResult::String(str_val) => str_val,
+            EvalResult::None => " ".to_string(),
+        };
     }
 
     #[test]
