@@ -869,6 +869,53 @@ mod tests {
     }
 
     #[test]
+    fn test_precedence_parser_expressions() {
+        //test cases - vector of tuples with input and expected output
+        let test_cases = vec![
+            ("-a * b".to_string(), "(-(a * b))"),
+            ("a + b + c".to_string(), "((a + b) + c)"),
+            ("a + b - c".to_string(), "((a + b) - c)"),
+            ("a * b * c".to_string(), "((a * b) * c)"),
+            ("a * b / c".to_string(), "((a * b) / c)"),
+            (
+                "a + b * c + d / e - f".to_string(),
+                "(((a + (b * c)) + (d / e)) - f)",
+            ),
+            ("3 + 4 * -5 * 5".to_string(), "(3 + (4 * (-(5 * 5))))"),
+            ("5 > 4 == 3 < 4".to_string(), "((5 > 4) == (3 < 4))"),
+            ("5 < 4 != 3 > 4".to_string(), "((5 < 4) != (3 > 4))"),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+        ];
+
+        for (input, output) in test_cases {
+            let lexer = Lexer::new(input.to_string());
+            let mut parser = Parser::new(lexer);
+            let program = parser
+                .parse()
+                .expect("parsing program with various statements failed");
+
+            for stmt in program.statements.iter() {
+                if let Statement::Expression { value } = stmt {
+                    println!(
+                        "Output of precedence expression input: {} is: {}",
+                        input,
+                        value.to_string()
+                    );
+
+                    assert!(value.to_string().eq_ignore_ascii_case(output));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_parser() {
         let input = r#"
         let x = 5;
