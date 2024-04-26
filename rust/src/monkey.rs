@@ -23,6 +23,10 @@ pub trait Expression: Node {
 
     fn eval(&self) -> Result<EvalResult, EvalError>;
 
+    fn as_infix_expression(&self) -> Option<&InfixExpression> {
+        return None;
+    }
+
     fn as_prefix_expression(&self) -> Option<&PrefixExpression> {
         return None;
     }
@@ -203,6 +207,10 @@ impl Expression for InfixExpression {
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
         return Ok(EvalResult::None); //TODO: this needs implementation
+    }
+
+    fn as_infix_expression(&self) -> Option<&InfixExpression> {
+        return Some(&self);
     }
 }
 
@@ -844,6 +852,138 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parser_infix_expressions() {
+        let input = r#"
+                5 + 5;
+                5 - 5;
+                5 * 5;
+                5 / 5;
+                5 > 5;
+                5 < 5;
+                5 == 5;
+                5 != 5;
+            "#;
+
+        let output = vec![
+            ("5".to_string(), "+".to_string(), "5".to_string()),
+            ("5".to_string(), "-".to_string(), "5".to_string()),
+            ("5".to_string(), "*".to_string(), "5".to_string()),
+            ("5".to_string(), "/".to_string(), "5".to_string()),
+            ("5".to_string(), ">".to_string(), "5".to_string()),
+            ("5".to_string(), "<".to_string(), "5".to_string()),
+            ("5".to_string(), "==".to_string(), "5".to_string()),
+            ("5".to_string(), "!=".to_string(), "5".to_string()),
+        ];
+
+        let mut parser = parser_for_input(input.to_string());
+        let program = parser
+            .parse()
+            .expect("parsing infix expressions program failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                let (left, operator, right) = &output[index];
+                assert_infix_expression(value.as_ref(), left, operator, right)
+            }
+        }
+    }
+
+    #[test]
+    fn test_precedence_parser_expressions() {
+        //test cases - vector of tuples with input and expected output
+        let test_cases = vec![
+            ("-a + b".to_string(), "((-a) + b)"),
+            ("-a * b".to_string(), "((-a) * b)"),
+            ("a + b + c".to_string(), "((a + b) + c)"),
+            ("a + b - c".to_string(), "((a + b) - c)"),
+            ("a * b * c".to_string(), "((a * b) * c)"),
+            ("a * b / c".to_string(), "((a * b) / c)"),
+            (
+                "a + b * c + d / e - f".to_string(),
+                "(((a + (b * c)) + (d / e)) - f)",
+            ),
+            ("3 + 4 * -5 * 5".to_string(), "(3 + ((4 * (-5)) * 5))"),
+            ("5 > 4 == 3 < 4".to_string(), "((5 > 4) == (3 < 4))"),
+            ("5 < 4 != 3 > 4".to_string(), "((5 < 4) != (3 > 4))"),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+        ];
+
+        for (input, output) in test_cases {
+            let lexer = Lexer::new(input.to_string());
+            let mut parser = Parser::new(lexer);
+            let program = parser
+                .parse()
+                .expect("parsing program with various statements failed");
+
+            for stmt in program.statements.iter() {
+                if let Statement::Expression { value } = stmt {
+                    println!(
+                        "Output of precedence expression input: {} is: {}",
+                        input,
+                        value.to_string()
+                    );
+
+                    assert!(value.to_string().eq_ignore_ascii_case(output));
+                }
+            }
+        }
+    }
+
+    fn assert_infix_expression<T: Into<String>>(
+        exp: &dyn Expression,
+        left: T,
+        operator: T,
+        right: T,
+    ) {
+        if exp.get_type() != ExpressionType::InfixExpression {
+            panic!("expression type is not a infix expression");
+        }
+
+        let expected_left_val: String = left.into();
+        let operator_val = operator.into();
+        let expected_right_val: String = right.into();
+
+        let final_str_val = format!(
+            "({} {} {})",
+            expected_left_val, operator_val, expected_right_val
+        );
+        assert!(exp.to_string().eq_ignore_ascii_case(final_str_val.as_str()));
+
+        //read as infix expression type
+        let infix_exp = exp
+            .as_infix_expression()
+            .expect("infix expression assertion failed");
+
+        //test infix expression components - left, right and operator
+        assert!(infix_exp
+            .operator_token
+            .literal
+            .eq_ignore_ascii_case(operator_val.as_str()));
+        assert_expression(&*infix_exp.left, expected_left_val);
+        assert_expression(&*infix_exp.left, expected_right_val);
+    }
+
+    fn assert_expression<T: Into<String>>(exp: &dyn Expression, value: T) {
+        let expected_value = value.into();
+
+        match exp.get_type() {
+            ExpressionType::Identifier => assert_identifier(exp, &expected_value),
+            ExpressionType::IntegerLiteral => {
+                assert_integer_literal(exp, expected_value.parse().unwrap())
+            }
+            _ => panic!(
+                "incorrect expression type on right, test does not handle all expression types"
+            ),
+        }
+    }
+
     fn assert_prefix_expression<T: Into<String>>(exp: &dyn Expression, prefix: T, value: T) {
         if exp.get_type() != ExpressionType::PrefixExpression {
             panic!("expression type is not a prefix expression");
@@ -918,91 +1058,6 @@ mod tests {
         let identifier = exp.as_identifier().expect("identifier assertion failed");
         assert!(identifier.name.eq_ignore_ascii_case(expected));
         assert!(identifier.name().eq_ignore_ascii_case("identifier"));
-    }
-
-    #[test]
-    fn test_parser_infix_expressions() {
-        let input = r#"
-            5 + 5;
-            5 - 5;
-            5 * 5;
-            5 / 5;
-            5 > 5;
-            5 < 5;
-            5 == 5;
-            5 != 5;
-        "#;
-
-        let output = vec![
-            "(5 + 5)".to_string(),
-            "(5 - 5)".to_string(),
-            "(5 * 5)".to_string(),
-            "(5 / 5)".to_string(),
-            "(5 > 5)".to_string(),
-            "(5 < 5)".to_string(),
-            "(5 == 5)".to_string(),
-            "(5 != 5)".to_string(),
-        ];
-
-        let mut parser = parser_for_input(input.to_string());
-        let program = parser
-            .parse()
-            .expect("parsing infix expressions program failed");
-        for (index, stmt) in program.statements.iter().enumerate() {
-            if let Statement::Expression { value } = stmt {
-                let actual_val = value.to_string();
-                assert!(actual_val.eq_ignore_ascii_case(&output[index]));
-                println!("Output infix expression: {}", actual_val);
-            }
-        }
-    }
-
-    #[test]
-    fn test_precedence_parser_expressions() {
-        //test cases - vector of tuples with input and expected output
-        let test_cases = vec![
-            ("-a + b".to_string(), "((-a) + b)"),
-            ("-a * b".to_string(), "((-a) * b)"),
-            ("a + b + c".to_string(), "((a + b) + c)"),
-            ("a + b - c".to_string(), "((a + b) - c)"),
-            ("a * b * c".to_string(), "((a * b) * c)"),
-            ("a * b / c".to_string(), "((a * b) / c)"),
-            (
-                "a + b * c + d / e - f".to_string(),
-                "(((a + (b * c)) + (d / e)) - f)",
-            ),
-            ("3 + 4 * -5 * 5".to_string(), "(3 + ((4 * (-5)) * 5))"),
-            ("5 > 4 == 3 < 4".to_string(), "((5 > 4) == (3 < 4))"),
-            ("5 < 4 != 3 > 4".to_string(), "((5 < 4) != (3 > 4))"),
-            (
-                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
-                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
-            ),
-            (
-                "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
-                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
-            ),
-        ];
-
-        for (input, output) in test_cases {
-            let lexer = Lexer::new(input.to_string());
-            let mut parser = Parser::new(lexer);
-            let program = parser
-                .parse()
-                .expect("parsing program with various statements failed");
-
-            for stmt in program.statements.iter() {
-                if let Statement::Expression { value } = stmt {
-                    println!(
-                        "Output of precedence expression input: {} is: {}",
-                        input,
-                        value.to_string()
-                    );
-
-                    assert!(value.to_string().eq_ignore_ascii_case(output));
-                }
-            }
-        }
     }
 
     #[test]
