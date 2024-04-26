@@ -18,13 +18,28 @@ const PRECEDENCE_CALL: i32 = 6; // my_function(X)
 
 pub trait Expression: Node {
     fn get_type(&self) -> ExpressionType;
+
     fn get_token(&self) -> &Token;
+
     fn eval(&self) -> Result<EvalResult, EvalError>;
+
+    fn as_prefix_expression(&self) -> Option<&PrefixExpression> {
+        return None;
+    }
+
+    fn as_identifier(&self) -> Option<&Identifier> {
+        return None;
+    }
+
+    fn as_integer_literal(&self) -> Option<&IntegerLiteral> {
+        return None;
+    }
 }
 
 pub enum EvalResult {
     String(String),
     Integer(i32),
+    Boolean(bool),
     None,
 }
 
@@ -90,6 +105,10 @@ impl Expression for Identifier {
     fn eval(&self) -> Result<EvalResult, EvalError> {
         return Ok(EvalResult::String(self.name.clone()));
     }
+
+    fn as_identifier(&self) -> Option<&Identifier> {
+        return Some(self);
+    }
 }
 
 impl Node for Identifier {
@@ -113,6 +132,10 @@ impl Expression for IntegerLiteral {
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
         return Ok(EvalResult::Integer(self.value as i32));
+    }
+
+    fn as_integer_literal(&self) -> Option<&IntegerLiteral> {
+        return Some(&self);
     }
 }
 
@@ -147,6 +170,10 @@ impl Expression for PrefixExpression {
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
         return self.right.eval();
+    }
+
+    fn as_prefix_expression(&self) -> Option<&PrefixExpression> {
+        return Some(&self);
     }
 }
 
@@ -454,7 +481,7 @@ impl Parser {
 
         self.advance_tokens();
 
-        let expression_result = self.parse_expression(PRECEDENCE_LOWEST);
+        let expression_result = self.parse_expression(PRECEDENCE_PREFIX);
         match expression_result {
             Ok(expression) => {
                 let prefix_expr = Box::new(PrefixExpression {
@@ -746,6 +773,154 @@ mod tests {
     }
 
     #[test]
+    fn test_parser_identifier_expr() {
+        let input = r#"
+            foobar;
+            a;
+            my_var;
+            "#;
+
+        let output: Vec<String> = vec!["foobar".to_string(), "a".to_string(), "my_var".to_string()];
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                assert_identifier(value.as_ref(), output.get(index).unwrap());
+            } else {
+                panic!("invalid token type on expr. expected identifier type");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parser_int_literal() {
+        let input = r#"
+            10;
+            4;
+            100;
+            "#;
+
+        let output: Vec<i32> = vec![10, 4, 100];
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                assert_integer_literal(value.as_ref(), *output.get(index).unwrap())
+            } else {
+                panic!("invalid expression type");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parser_prefix_expressions() {
+        let input = r#"
+            !5;
+            -10;
+            -bar;
+            "#;
+
+        let output = vec![
+            ("!".to_string(), "5".to_string()),
+            ("-".to_string(), "10".to_string()),
+            ("-".to_string(), "bar".to_string()),
+        ];
+
+        let mut parser = parser_for_input(input.to_string());
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                let (prefix, val) = &output[index];
+                assert_prefix_expression(value.as_ref(), prefix, val);
+            } else {
+                panic!("parsing failed, incorrect expression type found");
+            }
+        }
+    }
+
+    fn assert_prefix_expression<T: Into<String>>(exp: &dyn Expression, prefix: T, value: T) {
+        if exp.get_type() != ExpressionType::PrefixExpression {
+            panic!("expression type is not a prefix expression");
+        }
+
+        let expected_prefix: String = prefix.into();
+        let expected_value: String = value.into();
+
+        let expected_prefix_str = format!("{}{}", expected_prefix, expected_value);
+
+        let res = exp.eval().expect("prefix expression eval failed");
+        match res {
+            EvalResult::Integer(int_val) => {
+                let final_val = format!("{}{}", exp.get_token().literal, int_val);
+                assert!(final_val.eq_ignore_ascii_case(expected_prefix_str.as_str()));
+            }
+            EvalResult::String(str_val) => {
+                let final_val = format!("{}{}", exp.get_token().literal, str_val);
+                assert!(final_val.eq_ignore_ascii_case(expected_prefix_str.as_str()));
+            }
+            EvalResult::None => panic!("parsing prefix expression failed, found none"),
+            EvalResult::Boolean(_) => todo!(),
+        }
+
+        //get the right expression on the prefix expression
+        let prefix_exp = exp
+            .as_prefix_expression()
+            .expect("prefix expression assertion failed");
+
+        match prefix_exp.right.get_type() {
+            ExpressionType::Identifier => {
+                assert_identifier(prefix_exp.right.as_ref(), &expected_value)
+            }
+            ExpressionType::IntegerLiteral => {
+                assert_integer_literal(prefix_exp.right.as_ref(), expected_value.parse().unwrap())
+            }
+            _ => panic!(
+                "incorrect expression type on right, test does not handle all expression types"
+            ),
+        }
+    }
+
+    fn assert_integer_literal(exp: &dyn Expression, expected: i32) {
+        if exp.get_type() != ExpressionType::IntegerLiteral {
+            panic!("expression type is not an integer literal");
+        }
+
+        let res = exp.eval().expect("int literal expression eval failed");
+        if let EvalResult::Integer(int_val) = res {
+            assert_eq!(int_val, expected);
+        } else {
+            panic!("invalid eval result type");
+        }
+
+        let int_literal = exp
+            .as_integer_literal()
+            .expect("integer literal assertion failed");
+
+        assert_eq!(int_literal.value, expected as usize);
+        assert!(int_literal
+            .name()
+            .eq_ignore_ascii_case(exp.get_token().literal.as_str()));
+    }
+
+    fn assert_identifier(exp: &dyn Expression, expected: &String) {
+        if exp.get_type() != ExpressionType::Identifier {
+            panic!("expression type is not an identifier");
+        }
+        //check identifier value
+        assert!(exp.to_string().eq_ignore_ascii_case(expected));
+
+        let identifier = exp.as_identifier().expect("identifier assertion failed");
+        assert!(identifier.name.eq_ignore_ascii_case(expected));
+        assert!(identifier.name().eq_ignore_ascii_case("identifier"));
+    }
+
+    #[test]
     fn test_parser_infix_expressions() {
         let input = r#"
             5 + 5;
@@ -783,96 +958,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_prefix_expressions() {
-        let input = r#"
-        !5;
-        -10;
-        -bar;
-        "#;
-
-        let output = vec!["!5".to_string(), "-10".to_string(), "-bar".to_string()];
-
-        let mut parser = parser_for_input(input.to_string());
-        let program = parser.parse().expect("parsing failed");
-        for (index, stmt) in program.statements.iter().enumerate() {
-            if let Statement::Expression { value } = stmt {
-                let expr_val = &output[index];
-                let res = value.eval().expect("prefix expression eval failed");
-                match res {
-                    EvalResult::Integer(int_val) => {
-                        let final_val = format!("{}{}", value.get_token().literal, int_val);
-                        assert!(final_val.eq_ignore_ascii_case(expr_val));
-                    }
-                    EvalResult::String(str_val) => {
-                        let final_val = format!("{}{}", value.get_token().literal, str_val);
-                        assert!(final_val.eq_ignore_ascii_case(expr_val));
-                    }
-                    EvalResult::None => panic!("parsing prefix expression failed, found none"),
-                }
-            } else {
-                panic!("parsing failed, incorrect expression type found");
-            }
-        }
-    }
-
-    #[test]
-    fn test_parser_int_literal() {
-        let input = r#"
-        10;
-        4;
-        100;
-        "#;
-
-        let output: Vec<i32> = vec![10, 4, 100];
-
-        let lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse().expect("parsing failed");
-        for (index, stmt) in program.statements.iter().enumerate() {
-            if let Statement::Expression { value } = stmt {
-                let res = value.eval().expect("int literal expression eval failed");
-                if let EvalResult::Integer(int_val) = res {
-                    assert_eq!(int_val, *output.get(index).unwrap());
-                } else {
-                    panic!("invalid eval result type");
-                }
-            } else {
-                panic!("invalid expression type");
-            }
-        }
-    }
-
-    #[test]
-    fn test_parser_identifier_expr() {
-        let input = r#"
-        foobar;
-        a;
-        my_var;
-        "#;
-
-        let output: Vec<String> = vec!["foobar".to_string(), "a".to_string(), "my_var".to_string()];
-
-        let lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse().expect("parsing failed");
-        for (index, stmt) in program.statements.iter().enumerate() {
-            if let Statement::Expression { value } = stmt {
-                assert!(value
-                    .to_string()
-                    .eq_ignore_ascii_case(output.get(index).unwrap()));
-            } else {
-                panic!("invalid token type on expr. expected identifier type");
-            }
-        }
-    }
-
-    #[test]
     fn test_precedence_parser_expressions() {
         //test cases - vector of tuples with input and expected output
         let test_cases = vec![
-            ("-a * b".to_string(), "(-(a * b))"),
+            ("-a + b".to_string(), "((-a) + b)"),
+            ("-a * b".to_string(), "((-a) * b)"),
             ("a + b + c".to_string(), "((a + b) + c)"),
             ("a + b - c".to_string(), "((a + b) - c)"),
             ("a * b * c".to_string(), "((a * b) * c)"),
@@ -881,7 +971,7 @@ mod tests {
                 "a + b * c + d / e - f".to_string(),
                 "(((a + (b * c)) + (d / e)) - f)",
             ),
-            ("3 + 4 * -5 * 5".to_string(), "(3 + (4 * (-(5 * 5))))"),
+            ("3 + 4 * -5 * 5".to_string(), "(3 + ((4 * (-5)) * 5))"),
             ("5 > 4 == 3 < 4".to_string(), "((5 > 4) == (3 < 4))"),
             ("5 < 4 != 3 > 4".to_string(), "((5 < 4) != (3 > 4))"),
             (
@@ -927,6 +1017,8 @@ mod tests {
         10;
         5 + 2;
         4 + y;
+        let x = a + b * c;
+        return x + y;
         "#;
 
         let lexer = Lexer::new(input.to_string());
@@ -942,26 +1034,21 @@ mod tests {
                     identifier,
                     value,
                 } => {
-                    let str_val = expression_string_value(&value);
-                    println!("{} {} = {}", token.literal, identifier.to_string(), str_val);
+                    println!(
+                        "{} {} = {}",
+                        token.literal,
+                        identifier.to_string(),
+                        value.to_string()
+                    );
                 }
                 Statement::Return { token, value } => {
-                    let str_val = expression_string_value(&value);
-                    println!("{} {}", token.literal, str_val);
+                    println!("{} {}", token.literal, value.to_string());
                 }
                 Statement::Expression { value } => {
                     println!("{}", value.to_string());
                 }
             }
         }
-    }
-
-    fn expression_string_value(expression: &Box<dyn Expression>) -> String {
-        return match expression.eval().expect("eval result expected") {
-            EvalResult::Integer(int_val) => format!("{}", int_val),
-            EvalResult::String(str_val) => str_val,
-            EvalResult::None => " ".to_string(),
-        };
     }
 
     #[test]
