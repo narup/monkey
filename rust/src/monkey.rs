@@ -38,6 +38,10 @@ pub trait Expression: Node {
     fn as_integer_literal(&self) -> Option<&IntegerLiteral> {
         return None;
     }
+
+    fn as_boolean(&self) -> Option<&Boolean> {
+        return None;
+    }
 }
 
 pub enum EvalResult {
@@ -60,6 +64,11 @@ pub struct Identifier {
 pub struct IntegerLiteral {
     token: Token,
     value: usize,
+}
+
+pub struct Boolean {
+    token: Token,
+    value: bool,
 }
 
 pub struct PrefixExpression {
@@ -92,8 +101,37 @@ pub enum Statement {
 pub enum ExpressionType {
     Identifier,
     IntegerLiteral,
+    Boolean,
     PrefixExpression,
     InfixExpression,
+}
+
+impl Expression for Boolean {
+    fn get_type(&self) -> ExpressionType {
+        ExpressionType::Boolean
+    }
+
+    fn get_token(&self) -> &Token {
+        return &self.token;
+    }
+
+    fn eval(&self) -> Result<EvalResult, EvalError> {
+        return Ok(EvalResult::Boolean(self.value));
+    }
+
+    fn as_boolean(&self) -> Option<&Boolean> {
+        return Some(self);
+    }
+}
+
+impl Node for Boolean {
+    fn name(&self) -> String {
+        "boolean".to_string()
+    }
+
+    fn to_string(&self) -> String {
+        format!("{}", self.token.literal)
+    }
 }
 
 //In Monkey identifier can be an expression
@@ -399,6 +437,7 @@ impl Parser {
             match self.current_token.token_type {
                 TokenType::Identifier => Some(self.parse_identifier()?),
                 TokenType::Int => Some(self.parse_integer_literal()?),
+                TokenType::True | TokenType::False => Some(self.parse_boolean()?),
                 TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()?),
                 _ => None,
             };
@@ -470,6 +509,17 @@ impl Parser {
         });
 
         return Ok(ident_val);
+    }
+
+    fn parse_boolean(&mut self) -> Result<Box<Boolean>, ParserError> {
+        let boolean_val = Box::new(Boolean {
+            token: Token {
+                token_type: self.current_token.token_type.clone(),
+                literal: self.current_token.literal.clone(),
+            },
+            value: (self.current_token.token_type == TokenType::True),
+        });
+        Ok(boolean_val)
     }
 
     fn parse_integer_literal(&mut self) -> Result<Box<IntegerLiteral>, ParserError> {
@@ -804,6 +854,27 @@ mod tests {
     }
 
     #[test]
+    fn test_parser_boolean() {
+        let input = r#"
+            true;
+            false;
+            "#;
+
+        let output: Vec<bool> = vec![true, false];
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse().expect("parsing failed");
+        for (index, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression { value } = stmt {
+                assert_boolean(value.as_ref(), *output.get(index).unwrap())
+            } else {
+                panic!("invalid expression type");
+            }
+        }
+    }
+
+    #[test]
     fn test_parser_int_literal() {
         let input = r#"
             10;
@@ -892,6 +963,10 @@ mod tests {
     fn test_precedence_parser_expressions() {
         //test cases - vector of tuples with input and expected output
         let test_cases = vec![
+            ("true".to_string(), "true"),
+            ("false".to_string(), "false"),
+            ("3 > 5 == false".to_string(), "((3 > 5) == false)"),
+            ("3 < 5 == true".to_string(), "((3 < 5) == true)"),
             ("-a + b".to_string(), "((-a) + b)"),
             ("-a * b".to_string(), "((-a) * b)"),
             ("a + b + c".to_string(), "((a + b) + c)"),
@@ -1024,6 +1099,26 @@ mod tests {
                 "incorrect expression type on right, test does not handle all expression types"
             ),
         }
+    }
+
+    fn assert_boolean(exp: &dyn Expression, expected_val: bool) {
+        if exp.get_type() != ExpressionType::Boolean {
+            panic!("expression type is not boolean");
+        }
+
+        let res = exp.eval().expect("boolean expression eval failed");
+        if let EvalResult::Boolean(bool_val) = res {
+            assert_eq!(bool_val, expected_val);
+        } else {
+            panic!("invalid eval result type");
+        }
+
+        let bool_val = exp.as_boolean().expect("boolean assertion failed");
+
+        assert_eq!(bool_val.value, expected_val);
+        assert!(bool_val
+            .to_string()
+            .eq_ignore_ascii_case(exp.get_token().literal.as_str()));
     }
 
     fn assert_integer_literal(exp: &dyn Expression, expected: i32) {
