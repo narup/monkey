@@ -1,6 +1,6 @@
 use derive_more::Display;
 use lazy_static::lazy_static;
-use std::{collections::HashMap, usize};
+use std::collections::HashMap;
 
 pub trait Node {
     //prints the node name
@@ -24,23 +24,23 @@ pub trait Expression: Node {
     fn eval(&self) -> Result<EvalResult, EvalError>;
 
     fn as_infix_expression(&self) -> Option<&InfixExpression> {
-        return None;
+        None
     }
 
     fn as_prefix_expression(&self) -> Option<&PrefixExpression> {
-        return None;
+        None
     }
 
     fn as_identifier(&self) -> Option<&Identifier> {
-        return None;
+        None
     }
 
     fn as_integer_literal(&self) -> Option<&IntegerLiteral> {
-        return None;
+        None
     }
 
     fn as_boolean(&self) -> Option<&Boolean> {
-        return None;
+        None
     }
 }
 
@@ -112,15 +112,15 @@ impl Expression for Boolean {
     }
 
     fn get_token(&self) -> &Token {
-        return &self.token;
+        &self.token
     }
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
-        return Ok(EvalResult::Boolean(self.value));
+        Ok(EvalResult::Boolean(self.value))
     }
 
     fn as_boolean(&self) -> Option<&Boolean> {
-        return Some(self);
+        Some(self)
     }
 }
 
@@ -130,7 +130,7 @@ impl Node for Boolean {
     }
 
     fn to_string(&self) -> String {
-        format!("{}", self.token.literal)
+        self.token.literal.clone()
     }
 }
 
@@ -141,15 +141,15 @@ impl Expression for Identifier {
     }
 
     fn get_token(&self) -> &Token {
-        return &self.token;
+        &self.token
     }
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
-        return Ok(EvalResult::String(self.name.clone()));
+        Ok(EvalResult::String(self.name.clone()))
     }
 
     fn as_identifier(&self) -> Option<&Identifier> {
-        return Some(self);
+        Some(self)
     }
 }
 
@@ -169,21 +169,21 @@ impl Expression for IntegerLiteral {
     }
 
     fn get_token(&self) -> &Token {
-        return &self.token;
+        &self.token
     }
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
-        return Ok(EvalResult::Integer(self.value as i32));
+        Ok(EvalResult::Integer(self.value as i32))
     }
 
     fn as_integer_literal(&self) -> Option<&IntegerLiteral> {
-        return Some(&self);
+        Some(self)
     }
 }
 
 impl Node for IntegerLiteral {
     fn name(&self) -> String {
-        return self.token.literal.clone();
+        self.token.literal.clone()
     }
 
     fn to_string(&self) -> String {
@@ -207,15 +207,15 @@ impl Expression for PrefixExpression {
     }
 
     fn get_token(&self) -> &Token {
-        return &self.prefix_token;
+        &self.prefix_token
     }
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
-        return self.right.eval();
+        self.right.eval()
     }
 
     fn as_prefix_expression(&self) -> Option<&PrefixExpression> {
-        return Some(&self);
+        Some(self)
     }
 }
 
@@ -240,15 +240,15 @@ impl Expression for InfixExpression {
     }
 
     fn get_token(&self) -> &Token {
-        return &self.operator_token;
+        &self.operator_token
     }
 
     fn eval(&self) -> Result<EvalResult, EvalError> {
-        return Ok(EvalResult::None); //TODO: this needs implementation
+        Ok(EvalResult::None) //TODO: this needs implementation
     }
 
     fn as_infix_expression(&self) -> Option<&InfixExpression> {
-        return Some(&self);
+        Some(self)
     }
 }
 
@@ -284,9 +284,7 @@ impl Node for Statement {
                 format!("{} {};", token.literal, value.to_string())
             }
 
-            Statement::Expression { value } => {
-                format!("{}", value.to_string())
-            }
+            Statement::Expression { value } => value.to_string().clone(),
         }
     }
 }
@@ -329,7 +327,7 @@ impl Parser {
             println!("Token:{:?}", p.current_token.token_type);
         }
 
-        return p;
+        p
     }
 
     /// Returns the parse of this [`Parser`].
@@ -356,7 +354,7 @@ impl Parser {
             self.advance_tokens();
         }
 
-        return Ok(program);
+        Ok(program)
     }
 
     fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
@@ -429,7 +427,7 @@ impl Parser {
     //in monkey expressions is a statement as well
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
         let expression = self.parse_expression(PRECEDENCE_LOWEST)?;
-        return Ok(Statement::Expression { value: expression });
+        Ok(Statement::Expression { value: expression })
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Box<dyn Expression>, ParserError> {
@@ -468,13 +466,11 @@ impl Parser {
                         _ => return Ok(final_expression), //no expression left
                     }
                 }
-                return Ok(final_expression);
+                Ok(final_expression)
             }
-            None => {
-                return Err(ParserError::SyntaxError(
-                    "missing semicolon on return statement".to_string(),
-                ))
-            }
+            None => Err(ParserError::SyntaxError(
+                "missing semicolon on return statement".to_string(),
+            )),
         }
     }
 
@@ -492,11 +488,11 @@ impl Parser {
 
         let right = self.parse_expression(precedence)?;
 
-        return Ok(Box::new(InfixExpression {
+        Ok(Box::new(InfixExpression {
             operator_token,
             left,
             right,
-        }));
+        }))
     }
 
     fn parse_identifier(&mut self) -> Result<Box<Identifier>, ParserError> {
@@ -508,13 +504,13 @@ impl Parser {
             name: self.current_token.literal.clone(),
         });
 
-        return Ok(ident_val);
+        Ok(ident_val)
     }
 
     fn parse_boolean(&mut self) -> Result<Box<Boolean>, ParserError> {
         let boolean_val = Box::new(Boolean {
             token: Token {
-                token_type: self.current_token.token_type.clone(),
+                token_type: self.current_token.token_type,
                 literal: self.current_token.literal.clone(),
             },
             value: (self.current_token.token_type == TokenType::True),
@@ -525,10 +521,10 @@ impl Parser {
     fn parse_integer_literal(&mut self) -> Result<Box<IntegerLiteral>, ParserError> {
         let token = Token::new(TokenType::Int, self.current_token.literal.clone());
         let usize_value = self.current_token.literal.parse::<usize>().unwrap();
-        return Ok(Box::new(IntegerLiteral {
+        Ok(Box::new(IntegerLiteral {
             token,
             value: usize_value,
-        }));
+        }))
     }
 
     fn parse_prefix_expression(&mut self) -> Result<Box<PrefixExpression>, ParserError> {
@@ -546,14 +542,14 @@ impl Parser {
                     prefix_token,
                     right: expression,
                 });
-                return Ok(prefix_expr);
+                Ok(prefix_expr)
             }
             Err(err) => Err(err),
         }
     }
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
-        return self.peek_token.token_type == token_type;
+        self.peek_token.token_type == token_type
     }
 
     fn advance_tokens(&mut self) {
@@ -568,20 +564,20 @@ impl Parser {
     }
 
     fn is_valid_token(&mut self) -> bool {
-        return self.current_token.token_type != TokenType::EndOfFile;
+        self.current_token.token_type != TokenType::EndOfFile
     }
 
     fn peek_precedence(&mut self) -> i32 {
         match PRECEDENCES.get(&self.peek_token.token_type) {
-            Some(p) => return *p,
-            _ => return PRECEDENCE_LOWEST,
+            Some(p) => *p,
+            _ => PRECEDENCE_LOWEST,
         }
     }
 
     fn current_precedence(&mut self) -> i32 {
         match PRECEDENCES.get(&self.current_token.token_type) {
-            Some(p) => return *p,
-            _ => return PRECEDENCE_LOWEST,
+            Some(p) => *p,
+            _ => PRECEDENCE_LOWEST,
         }
     }
 }
@@ -665,7 +661,7 @@ impl Lexer {
             next_ch = self.peek_char();
         }
 
-        return self.input[start_index..self.next_index].to_string();
+        self.input[start_index..self.next_index].to_string()
     }
 
     fn read_identifier(&mut self) -> String {
@@ -677,7 +673,7 @@ impl Lexer {
             next_ch = self.peek_char();
         }
 
-        return self.input[start_index..self.next_index].to_string();
+        self.input[start_index..self.next_index].to_string()
     }
 
     fn token_value(&mut self) -> String {
@@ -710,7 +706,7 @@ impl Lexer {
             }
         }
         self.current_index = self.next_index;
-        self.next_index = self.next_index + 1;
+        self.next_index += 1
     }
 
     fn skip_whitespace(&mut self) {
@@ -724,11 +720,11 @@ impl Lexer {
 }
 
 fn is_letter(ch: char) -> bool {
-    return ch.is_ascii_alphabetic() || ch == '_';
+    ch.is_ascii_alphabetic() || ch == '_'
 }
 
 fn is_digit(ch: char) -> bool {
-    return ch.is_ascii_digit();
+    ch.is_ascii_digit()
 }
 
 pub struct Token {
@@ -905,7 +901,7 @@ mod tests {
             -bar;
             "#;
 
-        let output = vec![
+        let output = [
             ("!".to_string(), "5".to_string()),
             ("-".to_string(), "10".to_string()),
             ("-".to_string(), "bar".to_string()),
@@ -1143,7 +1139,7 @@ mod tests {
             .eq_ignore_ascii_case(exp.get_token().literal.as_str()));
     }
 
-    fn assert_identifier(exp: &dyn Expression, expected: &String) {
+    fn assert_identifier(exp: &dyn Expression, expected: &str) {
         if exp.get_type() != ExpressionType::Identifier {
             panic!("expression type is not an identifier");
         }
@@ -1177,7 +1173,7 @@ mod tests {
             .parse()
             .expect("parsing program with various statements failed");
 
-        for (_, stmt) in program.statements.iter().enumerate() {
+        for stmt in program.statements.iter() {
             match stmt {
                 Statement::Let {
                     token,

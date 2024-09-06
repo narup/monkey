@@ -17,7 +17,7 @@ fn main() {
             .read_line(&mut input)
             .expect("Error reading the input");
 
-        if input.len() == 0 || input.len() == 1 {
+        if input.is_empty() || input.len() == 1 {
             continue;
         }
         if input.trim() == ":quit" {
@@ -31,7 +31,7 @@ fn main() {
         match parser.parse() {
             Ok(program) => {
                 for stmt in program.statements.iter() {
-                    println!("Statement: {}", stmt.to_string());
+                    println!("Statement: {}, Name: {}", stmt.to_string(), stmt.name());
                 }
             }
             Err(err) => println!("Parser error:{}", err),
