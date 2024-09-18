@@ -468,9 +468,10 @@ impl Parser {
                 }
                 Ok(final_expression)
             }
-            None => Err(ParserError::SyntaxError(
-                "missing semicolon on return statement".to_string(),
-            )),
+            None => Err(ParserError::SyntaxError(format!(
+                "invalid expression, unable to parse `{}` token",
+                self.current_token.literal.clone()
+            ))),
         }
     }
 
@@ -527,7 +528,7 @@ impl Parser {
         }))
     }
 
-    fn parse_prefix_expression(&mut self) -> Result<Box<PrefixExpression>, ParserError> {
+    fn parse_prefix_expression(&mut self) -> Result<Box<dyn Expression>, ParserError> {
         let prefix_token = Token::new(
             self.current_token.token_type,
             self.current_token.literal.clone(),
@@ -546,6 +547,10 @@ impl Parser {
             }
             Err(err) => Err(err),
         }
+    }
+
+    fn parse_grouped_expression(&mut self) -> Result<Box<dyn Expression>, ParserError> {
+        todo!()
     }
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
@@ -984,6 +989,11 @@ mod tests {
                 "3 + 4 * 5 == 3 * 1 + 4 * 5".to_string(),
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
+            ("1 + (2 + 3) + 4".to_string(), "((1 + (2 + 3)) + 4)"),
+            ("(5 + 5) * 2".to_string(), "((5 + 5) * 2)"),
+            ("2 / (5 + 5)".to_string(), "(2 / (5 + 5))"),
+            ("-(5 + 5)".to_string(), "(-(5 + 5))"),
+            ("!(true == true)".to_string(), "(!(true == true))"),
         ];
 
         for (input, output) in test_cases {
