@@ -2,9 +2,9 @@ use derive_more::Display;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-const PRECEDENCE_LOWEST: i32 = 0; //lowest
-const PRECEDENCE_EQUALS: i32 = 1; //==
-const PRECEDENCE_LESS_GREATER: i32 = 2; //> or <
+const PRECEDENCE_LOWEST: i32 = 0; // lowest
+const PRECEDENCE_EQUALS: i32 = 1; // ==
+const PRECEDENCE_LESS_GREATER: i32 = 2; // > or <
 const PRECEDENCE_SUM: i32 = 3; // +
 const PRECEDENCE_PRODUCT: i32 = 4; // *
 const PRECEDENCE_PREFIX: i32 = 5; // -X or !X
