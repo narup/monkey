@@ -20,6 +20,7 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement {
     Let {
         token: Token,
@@ -57,6 +58,11 @@ pub enum Expression {
         operator_token: Token,
         left: Box<Expression>,
         right: Box<Expression>,
+    },
+    If {
+        token: Token,
+        condition: Box<Expression>,
+        true_block: Vec<Statement>,
     },
 }
 
@@ -124,6 +130,11 @@ impl Node for Expression {
                 left: _,
                 right: _,
             } => "infix".to_string(),
+            Expression::If {
+                token: _,
+                condition: _,
+                true_block: _,
+            } => "if".to_string(),
         }
     }
 
@@ -146,6 +157,11 @@ impl Node for Expression {
                 operator_token.literal.clone(),
                 right.to_string()
             ),
+            Expression::If {
+                token: _,
+                condition: _,
+                true_block: _,
+            } => "if else block".to_string(),
         }
     }
 }
@@ -183,23 +199,29 @@ impl Parser {
         };
 
         while self.is_valid_token() {
-            match self.current_token.token_type {
-                TokenType::Let => program.statements.push(self.parse_let_statement()?),
-                TokenType::Return => program.statements.push(self.parse_return_statement()?),
-                _ => {
-                    let expr_stmt = self.parse_expression_statement()?;
-                    program.statements.push(expr_stmt);
+            let stmt = self.parse_statement()?;
+            program.statements.push(stmt);
 
-                    //semicolon is optional in expression statement
-                    if self.matches_peek_token(TokenType::Semicolon) {
-                        self.advance_tokens();
-                    }
-                }
-            }
             self.advance_tokens();
         }
 
         Ok(program)
+    }
+
+    fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+        match self.current_token.token_type {
+            TokenType::Let => self.parse_let_statement(),
+            TokenType::Return => self.parse_return_statement(),
+            _ => {
+                let expr_stmt = self.parse_expression_statement();
+
+                //semicolon is optional in expression statement
+                if self.matches_peek_token(TokenType::Semicolon) {
+                    self.advance_tokens();
+                }
+                expr_stmt
+            }
+        }
     }
 
     fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
@@ -281,6 +303,8 @@ impl Parser {
             TokenType::Int => Some(self.parse_integer_literal()?),
             TokenType::True | TokenType::False => Some(self.parse_boolean()?),
             TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()?),
+            TokenType::LParen => Some(self.parse_grouped_expression()?),
+            TokenType::If => Some(self.parse_if_expression()?),
             _ => None,
         };
 
@@ -394,7 +418,60 @@ impl Parser {
     }
 
     fn parse_grouped_expression(&mut self) -> Result<Box<Expression>, ParserError> {
-        todo!()
+        //move past left paren token
+        self.advance_tokens();
+
+        // parse the expression
+        let exp = self.parse_expression(PRECEDENCE_LOWEST)?;
+        if self.matches_peek_token(TokenType::RParen) {
+            self.advance_tokens();
+            return Ok(exp);
+        }
+
+        Err(ParserError::SyntaxError(
+            "invalid grouped expression, missing right parenthesis".to_owned(),
+        ))
+    }
+
+    fn parse_if_expression(&mut self) -> Result<Box<Expression>, ParserError> {
+        let if_token = Token::new(
+            self.current_token.token_type,
+            self.current_token.literal.clone(),
+        );
+
+        self.advance_tokens();
+
+        //parenthesis is optional around if condition
+        if self.matches_peek_token(TokenType::LParen) {
+            self.advance_tokens();
+        }
+
+        let condition = self.parse_expression(PRECEDENCE_LOWEST)?;
+
+        if self.matches_peek_token(TokenType::RParen) {
+            self.advance_tokens();
+        }
+
+        if !self.matches_peek_token(TokenType::LBrace) {
+            return Err(ParserError::SyntaxError(
+                "invalid if block, missing left brace".to_owned(),
+            ));
+        }
+        self.advance_tokens();
+
+        let mut stmts = Vec::new();
+        while !self.matches_peek_token(TokenType::RBrace) || self.is_valid_token() {
+            let stmt = self.parse_statement()?;
+            stmts.push(stmt);
+
+            self.advance_tokens();
+        }
+
+        Ok(Box::new(Expression::If {
+            token: if_token,
+            condition,
+            true_block: stmts,
+        }))
     }
 
     fn matches_peek_token(&self, token_type: TokenType) -> bool {
@@ -831,6 +908,7 @@ mod tests {
                 "3 + 4 * 5 == 3 * 1 + 4 * 5",
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
+            ("(5 + 5) * 2", "((5 + 5) * 2)"),
         ];
 
         for (input, output) in test_cases {
@@ -854,6 +932,27 @@ mod tests {
         }
 
         println!("**** precedence parser tests passed****");
+    }
+
+    #[test]
+    fn test_parse_if_expression() {
+        let input = "if (x < y) { x }";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+        let program = parser
+            .parse()
+            .expect("parsing program with if expression failed");
+
+        for stmt in program.statements.iter() {
+            if let Statement::Expr { value } = stmt {
+                println!(
+                    "Output of if expression input: {} is: {}",
+                    input,
+                    value.to_string()
+                );
+            }
+        }
     }
 
     #[test]
