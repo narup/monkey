@@ -31,6 +31,9 @@ pub enum Statement {
         token: Token,
         value: Box<Expression>,
     },
+    Block {
+        statements: Vec<Statement>,
+    },
     Expr {
         value: Box<Expression>,
     },
@@ -62,7 +65,7 @@ pub enum Expression {
     If {
         token: Token,
         condition: Box<Expression>,
-        true_block: Vec<Statement>,
+        true_block: Statement,
     },
 }
 
@@ -88,6 +91,7 @@ impl Node for Statement {
             } => "let".to_string(),
             Statement::Return { token: _, value: _ } => "return".to_string(),
             Statement::Expr { value } => value.to_string(),
+            Statement::Block { statements: _ } => "block".to_string(),
         }
     }
 
@@ -111,6 +115,18 @@ impl Node for Statement {
             }
 
             Statement::Expr { value } => value.to_string().clone(),
+            Statement::Block { statements } => {
+                let mut name_builder = String::new();
+                name_builder.push('{');
+                name_builder.push('\n');
+                for stmt in statements.iter() {
+                    name_builder.push_str(stmt.to_string().as_str());
+                    name_builder.push('\n');
+                }
+                name_builder.push('}');
+
+                name_builder
+            }
         }
     }
 }
@@ -159,9 +175,13 @@ impl Node for Expression {
             ),
             Expression::If {
                 token: _,
-                condition: _,
-                true_block: _,
-            } => "if else block".to_string(),
+                condition,
+                true_block,
+            } => format!(
+                "if {} {}",
+                condition.to_string().clone(),
+                true_block.to_string().clone()
+            ),
         }
     }
 }
@@ -212,6 +232,7 @@ impl Parser {
         match self.current_token.token_type {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
+            TokenType::LBrace => self.parse_block_statement(),
             _ => {
                 let expr_stmt = self.parse_expression_statement();
 
@@ -289,6 +310,26 @@ impl Parser {
             }
             Err(err) => Err(err),
         }
+    }
+
+    fn parse_block_statement(&mut self) -> Result<Statement, ParserError> {
+        let mut stmts = Vec::new();
+        while !self.matches_peek_token(TokenType::RBrace) && self.is_valid_token() {
+            self.advance_tokens();
+
+            let stmt = self.parse_statement()?;
+            stmts.push(stmt);
+        }
+
+        if !self.matches_peek_token(TokenType::RBrace) {
+            return Err(ParserError::SyntaxError(
+                "invalid if block, missing right brace".to_owned(),
+            ));
+        }
+        //skip right brace!
+        self.advance_tokens();
+
+        Ok(Statement::Block { statements: stmts })
     }
 
     //in monkey expressions is a statement as well
@@ -459,18 +500,11 @@ impl Parser {
         }
         self.advance_tokens();
 
-        let mut stmts = Vec::new();
-        while !self.matches_peek_token(TokenType::RBrace) || self.is_valid_token() {
-            let stmt = self.parse_statement()?;
-            stmts.push(stmt);
-
-            self.advance_tokens();
-        }
-
+        let stmt = self.parse_statement()?;
         Ok(Box::new(Expression::If {
             token: if_token,
             condition,
-            true_block: stmts,
+            true_block: stmt,
         }))
     }
 
@@ -936,7 +970,7 @@ mod tests {
 
     #[test]
     fn test_parse_if_expression() {
-        let input = "if (x < y) { x }";
+        let input = "if (x < y) { x; }";
 
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
@@ -945,12 +979,29 @@ mod tests {
             .expect("parsing program with if expression failed");
 
         for stmt in program.statements.iter() {
+            println!(
+                "Output of if expression input: {} is: {}",
+                input,
+                stmt.to_string()
+            );
+
             if let Statement::Expr { value } = stmt {
-                println!(
-                    "Output of if expression input: {} is: {}",
-                    input,
-                    value.to_string()
-                );
+                if let Expression::If {
+                    token,
+                    condition,
+                    true_block,
+                } = *value.to_owned()
+                {
+                    assert_eq!(token.token_type, TokenType::If);
+                    assert_infix_expression(*condition.to_owned(), "<", "x", "y");
+                    if let Statement::Block { statements } = true_block {
+                        for stmt in statements.iter() {
+                            if let Statement::Expr { value } = stmt {
+                                assert_identifier(*value.to_owned(), "x");
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -996,6 +1047,9 @@ mod tests {
                 }
                 Statement::Expr { value } => {
                     println!("{}", value.to_string());
+                }
+                Statement::Block { statements: _ } => {
+                    println!("{}", stmt.to_string());
                 }
             }
         }
