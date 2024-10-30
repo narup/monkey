@@ -66,6 +66,7 @@ pub enum Expression {
         token: Token,
         condition: Box<Expression>,
         true_block: Statement,
+        false_block: Option<Statement>,
     },
 }
 
@@ -150,6 +151,7 @@ impl Node for Expression {
                 token: _,
                 condition: _,
                 true_block: _,
+                false_block: _,
             } => "if".to_string(),
         }
     }
@@ -177,11 +179,23 @@ impl Node for Expression {
                 token: _,
                 condition,
                 true_block,
-            } => format!(
-                "if {} {}",
-                condition.to_string().clone(),
-                true_block.to_string().clone()
-            ),
+                false_block,
+            } => {
+                if let Some(false_block_val) = false_block {
+                    format!(
+                        "if {} {} else {}",
+                        condition.to_string().clone(),
+                        true_block.to_string(),
+                        false_block_val.to_string()
+                    )
+                } else {
+                    format!(
+                        "if {} {}",
+                        condition.to_string().clone(),
+                        true_block.to_string().clone()
+                    )
+                }
+            }
         }
     }
 }
@@ -500,11 +514,22 @@ impl Parser {
         }
         self.advance_tokens();
 
-        let stmt = self.parse_statement()?;
+        let true_block_stmt = self.parse_statement()?;
+        let mut false_block_stmt = None;
+
+        if self.matches_peek_token(TokenType::Else) {
+            //get to else token
+            self.advance_tokens();
+            //skip else token
+            self.advance_tokens();
+
+            false_block_stmt = Some(self.parse_statement()?);
+        }
         Ok(Box::new(Expression::If {
             token: if_token,
             condition,
-            true_block: stmt,
+            true_block: true_block_stmt,
+            false_block: false_block_stmt,
         }))
     }
 
@@ -970,34 +995,46 @@ mod tests {
 
     #[test]
     fn test_parse_if_expression() {
-        let input = "if (x < y) { x; }";
+        let test_cases = vec!["if (x < y) { x }", "if (x < y) { x } else { y }"];
 
-        let lexer = Lexer::new(input.to_string());
-        let mut parser = Parser::new(lexer);
-        let program = parser
-            .parse()
-            .expect("parsing program with if expression failed");
+        for input in test_cases {
+            let lexer = Lexer::new(input.to_string());
+            let mut parser = Parser::new(lexer);
+            let program = parser
+                .parse()
+                .expect("parsing program with if expression failed");
 
-        for stmt in program.statements.iter() {
-            println!(
-                "Output of if expression input: {} is: {}",
-                input,
-                stmt.to_string()
-            );
+            for stmt in program.statements.iter() {
+                println!(
+                    "Output of if expression input: {} is: {}",
+                    input,
+                    stmt.to_string()
+                );
 
-            if let Statement::Expr { value } = stmt {
-                if let Expression::If {
-                    token,
-                    condition,
-                    true_block,
-                } = *value.to_owned()
-                {
-                    assert_eq!(token.token_type, TokenType::If);
-                    assert_infix_expression(*condition.to_owned(), "<", "x", "y");
-                    if let Statement::Block { statements } = true_block {
-                        for stmt in statements.iter() {
-                            if let Statement::Expr { value } = stmt {
-                                assert_identifier(*value.to_owned(), "x");
+                if let Statement::Expr { value } = stmt {
+                    if let Expression::If {
+                        token,
+                        condition,
+                        true_block,
+                        false_block,
+                    } = *value.to_owned()
+                    {
+                        assert_eq!(token.token_type, TokenType::If);
+                        assert_infix_expression(*condition.to_owned(), "<", "x", "y");
+                        if let Statement::Block { statements } = true_block {
+                            for stmt in statements.iter() {
+                                if let Statement::Expr { value } = stmt {
+                                    assert_identifier(*value.to_owned(), "x");
+                                }
+                            }
+                        }
+                        if let Some(else_block) = false_block {
+                            if let Statement::Block { statements } = else_block {
+                                for stmt in statements.iter() {
+                                    if let Statement::Expr { value } = stmt {
+                                        assert_identifier(*value.to_owned(), "y");
+                                    }
+                                }
                             }
                         }
                     }
