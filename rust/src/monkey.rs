@@ -1175,18 +1175,21 @@ mod tests {
     #[test]
     fn test_parser() {
         let input = r#"
-        let x = 5;
-        let y = 10;
-        let foobar = 838383;
-        return 30;
-        return y;
-        foobar;
-        10;
-        5 + 2;
-        4 + y;
-        let x = a + b * c;
-        return x + y;
-        "#;
+         let x = 5;
+         let y = 10;
+         let foobar = 838383;
+         return 30;
+         return y;
+         foobar;
+         10;
+         5 + 2;
+         4 + y;
+         let x = a + b * c;
+         return x + y;
+         fn (x,y,z) { let z = x + y; return z;}
+         if (x != y) { return x; }
+         if (x + y > z) { x + y } else {return z;}
+         "#;
 
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
