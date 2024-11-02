@@ -68,6 +68,11 @@ pub enum Expression {
         true_block: Statement,
         false_block: Option<Statement>,
     },
+    Function {
+        token: Token,
+        parameters: Vec<Expression>,
+        body: Statement,
+    },
 }
 
 #[derive(Debug, Display)]
@@ -153,6 +158,11 @@ impl Node for Expression {
                 true_block: _,
                 false_block: _,
             } => "if".to_string(),
+            Expression::Function {
+                token: _,
+                parameters: _,
+                body: _,
+            } => "fn".to_string(),
         }
     }
 
@@ -195,6 +205,22 @@ impl Node for Expression {
                         true_block.to_string().clone()
                     )
                 }
+            }
+            Expression::Function {
+                token,
+                parameters,
+                body,
+            } => {
+                let mut param_string = Vec::new();
+                for p in parameters.iter() {
+                    param_string.push(p.to_string())
+                }
+                format!(
+                    "{} ({}) {}",
+                    token.literal,
+                    param_string.join(","),
+                    body.to_string()
+                )
             }
         }
     }
@@ -360,6 +386,7 @@ impl Parser {
             TokenType::Bang | TokenType::Minus => Some(self.parse_prefix_expression()?),
             TokenType::LParen => Some(self.parse_grouped_expression()?),
             TokenType::If => Some(self.parse_if_expression()?),
+            TokenType::Function => Some(self.parse_function_expression()?),
             _ => None,
         };
 
@@ -530,6 +557,53 @@ impl Parser {
             condition,
             true_block: true_block_stmt,
             false_block: false_block_stmt,
+        }))
+    }
+
+    fn parse_function_expression(&mut self) -> Result<Box<Expression>, ParserError> {
+        let fn_token = Token::new(
+            self.current_token.token_type,
+            self.current_token.literal.clone(),
+        );
+
+        //parenthesis is optional around if condition
+        if self.matches_peek_token(TokenType::LParen) {
+            self.advance_tokens();
+        }
+
+        let mut parameters = Vec::new();
+        while !self.matches_peek_token(TokenType::RParen) {
+            self.advance_tokens();
+
+            let param_expression = self.parse_expression(PRECEDENCE_LOWEST)?;
+            parameters.push(*param_expression);
+            if self.matches_peek_token(TokenType::Comma) {
+                self.advance_tokens();
+            } else if self.matches_peek_token(TokenType::RParen) {
+                continue;
+            } else {
+                return Err(ParserError::SyntaxError(
+                    "invalid function block, missing comma between parameters".to_owned(),
+                ));
+            }
+        }
+
+        //skip righ paren
+        self.advance_tokens();
+
+        if !self.matches_peek_token(TokenType::LBrace) {
+            return Err(ParserError::SyntaxError(
+                "invalid function block, missing left brace".to_owned(),
+            ));
+        }
+        self.advance_tokens();
+
+        let body = self.parse_statement()?;
+
+        Ok(Box::new(Expression::Function {
+            token: fn_token,
+            parameters,
+            body,
         }))
     }
 
@@ -1028,15 +1102,70 @@ mod tests {
                                 }
                             }
                         }
-                        if let Some(else_block) = false_block {
-                            if let Statement::Block { statements } = else_block {
-                                for stmt in statements.iter() {
-                                    if let Statement::Expr { value } = stmt {
-                                        assert_identifier(*value.to_owned(), "y");
-                                    }
+                        if let Some(Statement::Block { statements }) = false_block {
+                            for stmt in statements.iter() {
+                                if let Statement::Expr { value } = stmt {
+                                    assert_identifier(*value.to_owned(), "y");
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    fn assert_block_statement(stmt: Statement) {
+        if let Statement::Block { statements } = stmt {
+            for stmt in statements.iter() {
+                if let Statement::Expr { value } = stmt {
+                    assert_identifier(*value.to_owned(), "x");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_fn_expression() {
+        let test_cases = vec!["fn(x, y) { x + y }"];
+
+        for input in test_cases {
+            let lexer = Lexer::new(input.to_string());
+            let mut parser = Parser::new(lexer);
+            let program = parser
+                .parse()
+                .expect("parsing program with fn expression failed");
+
+            for stmt in program.statements.iter() {
+                println!(
+                    "Output of fn expression input: {} is: {}",
+                    input,
+                    stmt.to_string()
+                );
+
+                if let Statement::Expr { value } = stmt {
+                    if let Expression::Function {
+                        token,
+                        parameters,
+                        body,
+                    } = *value.to_owned()
+                    {
+                        assert_eq!(token.token_type, TokenType::Function);
+                        if let Statement::Block { statements } = body {
+                            for stmt in statements.iter() {
+                                if let Statement::Expr { value } = stmt {
+                                    assert_infix_expression(*value.to_owned(), "+", "x", "y");
+                                }
+                            }
+                        }
+                        assert_identifier(
+                            parameters.first().expect("expected identifier").to_owned(),
+                            "x",
+                        );
+                        assert_identifier(
+                            parameters.get(1).expect("expected identifier y").to_owned(),
+                            "y",
+                        );
                     }
                 }
             }
