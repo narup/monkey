@@ -8,7 +8,7 @@ const PRECEDENCE_LESS_GREATER: i32 = 2; // > or <
 const PRECEDENCE_SUM: i32 = 3; // +
 const PRECEDENCE_PRODUCT: i32 = 4; // *
 const PRECEDENCE_PREFIX: i32 = 5; // -X or !X
-const PRECEDENCE_CALL: i32 = 6; // my_function(X)
+const PRECEDENCE_CALL: i32 = 6;
 
 pub trait Node {
     //prints the node name
@@ -72,6 +72,11 @@ pub enum Expression {
         token: Token,
         parameters: Vec<Expression>,
         body: Statement,
+    },
+    Call {
+        token: Token,
+        function: Box<Expression>,
+        arguments: Vec<Expression>,
     },
 }
 
@@ -163,6 +168,11 @@ impl Node for Expression {
                 parameters: _,
                 body: _,
             } => "fn".to_string(),
+            Expression::Call {
+                token: _,
+                function: _,
+                arguments: _,
+            } => "function_call".to_string(),
         }
     }
 
@@ -221,6 +231,18 @@ impl Node for Expression {
                     param_string.join(","),
                     body.to_string()
                 )
+            }
+
+            Expression::Call {
+                token: _,
+                function,
+                arguments,
+            } => {
+                let mut arguments_string = Vec::new();
+                for a in arguments.iter() {
+                    arguments_string.push(a.to_string())
+                }
+                format!("{} ({})", function.to_string(), arguments_string.join(","))
             }
         }
     }
@@ -413,6 +435,11 @@ impl Parser {
                             let expression = self.parse_infix_expression(final_expression)?;
                             final_expression = expression;
                         }
+                        TokenType::LParen => {
+                            self.advance_tokens();
+                            let expression = self.parse_call_expression(final_expression)?;
+                            final_expression = expression;
+                        }
                         _ => return Ok(final_expression), //no expression left
                     }
                 }
@@ -423,6 +450,49 @@ impl Parser {
                 self.current_token.literal.clone()
             ))),
         }
+    }
+
+    fn parse_call_expression(
+        &mut self,
+        function: Box<Expression>,
+    ) -> Result<Box<Expression>, ParserError> {
+        // LParen token
+        let token = Token::new(
+            self.current_token.token_type,
+            self.current_token.literal.clone(),
+        );
+
+        //get to first expression argument
+        self.advance_tokens();
+
+        println!("Before call expression token: {:?}", self.current_token);
+
+        let mut args = Vec::new();
+        let arg = self.parse_expression(PRECEDENCE_LOWEST)?;
+        args.push(*arg);
+
+        while self.matches_peek_token(TokenType::Comma) {
+            self.advance_tokens();
+            self.advance_tokens();
+
+            let arg = self.parse_expression(PRECEDENCE_LOWEST)?;
+            args.push(*arg);
+        }
+
+        println!("After call expression token: {:?}", self.current_token);
+
+        if !self.matches_peek_token(TokenType::RParen) {
+            return Err(ParserError::SyntaxError(
+                "invalid call expression, missing right parenthesis".to_owned(),
+            ));
+        }
+        self.advance_tokens();
+
+        Ok(Box::new(Expression::Call {
+            token,
+            function,
+            arguments: args,
+        }))
     }
 
     fn parse_infix_expression(
@@ -824,6 +894,7 @@ lazy_static! {
         map.insert(TokenType::Minus, PRECEDENCE_SUM);
         map.insert(TokenType::Slash, PRECEDENCE_PRODUCT);
         map.insert(TokenType::Asterisk, PRECEDENCE_PRODUCT);
+        map.insert(TokenType::LParen, PRECEDENCE_CALL);
 
         map
     };
@@ -1189,6 +1260,7 @@ mod tests {
          fn (x,y,z) { let z = x + y; return z;}
          if (x != y) { return x; }
          if (x + y > z) { x + y } else {return z;}
+         add(1, 2 * 3, 4 + 5);
          "#;
 
         let lexer = Lexer::new(input.to_string());
