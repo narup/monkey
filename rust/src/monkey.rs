@@ -228,7 +228,7 @@ impl Node for Expression {
                 format!(
                     "{} ({}) {}",
                     token.literal,
-                    param_string.join(","),
+                    param_string.join(", "),
                     body.to_string()
                 )
             }
@@ -242,7 +242,7 @@ impl Node for Expression {
                 for a in arguments.iter() {
                     arguments_string.push(a.to_string())
                 }
-                format!("{} ({})", function.to_string(), arguments_string.join(","))
+                format!("{}({})", function.to_string(), arguments_string.join(", "))
             }
         }
     }
@@ -1113,6 +1113,11 @@ mod tests {
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
             ("(5 + 5) * 2", "((5 + 5) * 2)"),
+            ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+            (
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+                "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+            ),
         ];
 
         for (input, output) in test_cases {
