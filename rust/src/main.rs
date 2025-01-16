@@ -30,8 +30,8 @@ fn main() {
 
         match parser.parse() {
             Ok(program) => {
-                for stmt in program.statements.iter() {
-                    println!("Statement: {}, Name: {}", stmt.to_string(), stmt.name());
+                for stmt in &program.statements {
+                    println!("{}", stmt.to_string());
                 }
             }
             Err(err) => println!("Parser error:{}", err),
