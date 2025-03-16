@@ -636,17 +636,22 @@ impl Parser {
             self.current_token.literal.clone(),
         );
 
-        //parenthesis is optional around if condition
         if self.matches_peek_token(TokenType::LParen) {
             self.advance_tokens();
+        } else {
+            return Err(ParserError::SyntaxError(
+                "invalid function block, missing left paren".to_owned(),
+            ));            
         }
 
+        //parse function parameters
         let mut parameters = Vec::new();
         while !self.matches_peek_token(TokenType::RParen) {
             self.advance_tokens();
 
             let param_expression = self.parse_expression(PRECEDENCE_LOWEST)?;
             parameters.push(*param_expression);
+
             if self.matches_peek_token(TokenType::Comma) {
                 self.advance_tokens();
             } else if self.matches_peek_token(TokenType::RParen) {
@@ -1270,6 +1275,7 @@ mod tests {
          if (x != y) { return x; }
          if (x + y > z) { x + y } else {return z;}
          add(1, 2 * 3, 4 + 5);
+         fn(x, y) { x + y; }(2, 3);
          "#;
 
         let lexer = Lexer::new(input.to_string());
