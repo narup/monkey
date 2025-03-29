@@ -1104,6 +1104,60 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_basic_literals() {
+        struct TestCase {
+            input: String,
+            expected: Object,
+        }
+
+        let test_cases = vec![
+            TestCase {
+                input: "5;".to_string(),
+                expected: Object::Integer(5),
+            },
+            TestCase {
+                input: "10;".to_string(), 
+                expected: Object::Integer(10),
+            },
+            TestCase {
+                input: "true;".to_string(),
+                expected: Object::Boolean(true), 
+            },
+            TestCase {
+                input: "false;".to_string(),
+                expected: Object::Boolean(false),
+            },
+            TestCase {
+                input: r#"
+                    5;
+                    10;
+                    true;
+                    false;
+                "#.to_string(),
+                expected: Object::Boolean(false), // Last evaluated value
+            },
+        ];
+
+        for test in test_cases {
+            let lexer = Lexer::new(test.input.clone());
+            let mut parser = Parser::new(lexer);
+            
+            match parser.parse() {
+                Ok(program) => {
+                    match program.eval() {
+                        Ok(result) => {
+                            assert_eq!(result.to_string(), test.expected.to_string());
+                            println!("✓ Input: {} evaluated to {}", test.input.trim(), result.to_string());
+                        },
+                        Err(err) => panic!("Evaluation error: {}", err),
+                    }
+                },
+                Err(err) => panic!("Parser error: {}", err),
+            }
+        }
+    }
+
+    #[test]
     fn test_parse_identifier_expr() {
         let input = r#"
            foobar;
