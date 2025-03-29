@@ -16,8 +16,44 @@ pub trait Node {
     fn to_string(&self) -> String;
 }
 
+pub trait Eval {
+    fn eval(&self) -> Result<Object, EvalError>;
+}
+
+#[derive(Debug, Display)]
+pub enum Object {
+    Integer(i64),
+    Boolean(bool),
+    Null,
+}
+
+impl Object {
+    pub fn to_string(&self) -> String {
+        match self {
+            Object::Integer(n) => format!("{}", n),
+            Object::Boolean(b) => format!("{}", b),
+            Object::Null => "null".to_string(),
+        }
+    }   
+}
+
 pub struct Program {
     pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Display)]
+pub enum EvalError {
+    ValueError(String),
+}
+
+impl Program {
+    pub fn eval(&self) -> Result<Object, EvalError> {
+        let mut result = Object::Null;
+        for stmt in self.statements.iter() {
+            result = stmt.eval()?;
+        }
+        Ok(result)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -142,6 +178,27 @@ impl Node for Statement {
     }
 }
 
+impl Eval for Statement {
+    fn eval(&self) -> Result<Object, EvalError> {
+        match self {
+            Statement::Let {
+                token: _,
+                identifier: _,
+                value: _,
+            } => Ok(Object::Null),
+            Statement::Return { token: _, value } => value.eval(),
+            Statement::Expr { value } => value.eval(),
+            Statement::Block { statements } => {
+                let mut result = Object::Null;
+                for stmt in statements.iter() {
+                    result = stmt.eval()?;
+                }
+                Ok(result)
+            }
+        }
+    }
+}
+
 impl Node for Expression {
     fn name(&self) -> String {
         match self {
@@ -244,6 +301,89 @@ impl Node for Expression {
                 }
                 format!("{}({})", function.to_string(), arguments_string.join(", "))
             }
+        }
+    }
+}
+
+impl Eval for Expression {
+    fn eval(&self) -> Result<Object, EvalError> {
+        match self {
+            Expression::Identifier { token: _, name: _ } => Ok(Object::Null),
+            Expression::IntegerLiteral { token: _, value } => Ok(Object::Integer(*value as i64)),
+            Expression::Boolean { token: _, value } => Ok(Object::Boolean(*value)),
+            Expression::Prefix {
+                prefix_token,
+                right,
+            } => {
+                let right_val = right.eval()?;
+                match right_val {
+                    Object::Integer(n) => Ok(Object::Integer(-n)),
+                    Object::Boolean(b) => Ok(Object::Boolean(!b)),
+                    _ => Err(EvalError::ValueError(
+                        "invalid prefix expression value".to_string(),
+                    )),
+                }
+            }
+            Expression::Infix {
+                operator_token,
+                left,
+                right,
+            } => {
+                let left_val = left.eval()?;
+                let right_val = right.eval()?;
+
+                match (left_val, right_val) {
+                    (Object::Integer(l), Object::Integer(r)) => {
+                        match operator_token.token_type {
+                            TokenType::Plus => Ok(Object::Integer(l + r)),
+                            TokenType::Minus => Ok(Object::Integer(l - r)),
+                            TokenType::Asterisk => Ok(Object::Integer(l * r)),
+                            TokenType::Slash => Ok(Object::Integer(l / r)),
+                            TokenType::Equal => Ok(Object::Boolean(l == r)),
+                            TokenType::NotEqual => Ok(Object::Boolean(l != r)),
+                            TokenType::LessThan => Ok(Object::Boolean(l < r)),
+                            TokenType::GreaterThan => Ok(Object::Boolean(l > r)),
+                            _ => Err(EvalError::ValueError(
+                                "invalid operator for integers".to_string(),
+                            )),
+                        }
+                    }
+                    (Object::Boolean(l), Object::Boolean(r)) => {
+                        match operator_token.token_type {
+                            TokenType::Equal => Ok(Object::Boolean(l == r)),
+                            TokenType::NotEqual => Ok(Object::Boolean(l != r)),
+                            _ => Err(EvalError::ValueError(
+                                "invalid operator for booleans".to_string(),
+                            )),
+                        }
+                    }
+                    _ => Err(EvalError::ValueError(
+                        "invalid infix expression value".to_string(),
+                    )),
+                }
+            }
+            Expression::If {
+                token: _,
+                condition,
+                true_block,
+                false_block,
+            } => {
+                let condition_val = condition.eval()?;
+                match condition_val {
+                    Object::Boolean(true) => true_block.eval(),
+                    Object::Boolean(false) => {
+                        if let Some(false_block_val) = false_block {
+                            false_block_val.eval()
+                        } else {
+                            Ok(Object::Null)
+                        }
+                    }
+                    _ => Err(EvalError::ValueError(
+                        "invalid if expression value".to_string(),
+                    )),
+                }
+            }
+            _ => Ok(Object::Null),
         }
     }
 }

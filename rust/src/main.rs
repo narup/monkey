@@ -29,12 +29,20 @@ fn main() {
         let mut parser = monkey::Parser::new(lexer);
 
         match parser.parse() {
-            Ok(program) => {
+            Ok(program) =>{
                 for stmt in &program.statements {
                     println!("{}", stmt.to_string());
+                }
+
+                println!("Evaluating....");
+                let eval_result = program.eval();
+                match eval_result {
+                    Ok(result) => println!("{}", result.to_string()),
+                    Err(err) => println!("Evaluation error:{}", err),
                 }
             }
             Err(err) => println!("Parser error:{}", err),
         }
     }
 }
+    
